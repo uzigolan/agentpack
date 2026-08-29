@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from agentpack.core.builder import build
-from agentpack.models.package import KnowledgeMode
+from agentpack.models.package import BuildOptions, KnowledgeMode
 
 ALL_TARGETS = [
     "universal",
@@ -140,6 +140,14 @@ def test_bundled_mode_keeps_references(package, tmp_path: Path):
     assert "<!--agentpack-mode:served-->" not in (skill_dir / "SKILL.md").read_text(
         encoding="utf-8"
     )
+
+
+def test_served_is_the_default_when_the_manifest_says_nothing(package, tmp_path: Path):
+    package.build = BuildOptions()
+    assert package.build.knowledge is KnowledgeMode.SERVED
+    _build(package, tmp_path)
+    skill_dir = tmp_path / "dist" / "build" / "universal" / "skills" / "network-analysis"
+    assert not (skill_dir / "references").exists()
 
 
 def test_strict_mode_fails_on_warnings(package, tmp_path: Path):

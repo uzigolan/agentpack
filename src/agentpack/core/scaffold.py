@@ -39,7 +39,7 @@ build:
   output: {output}
   clean: true
   reproducible: true
-  knowledge: bundled   # bundled | served
+  knowledge: served    # served | bundled
 
 compatibility:
   unsupportedFeaturePolicy: warn   # ignore | warn | error
@@ -122,7 +122,7 @@ mcp: []
 
 build:
   output: {output}     # every generated artifact goes here
-  knowledge: bundled   # bundled | served
+  knowledge: served    # served | bundled
 
 compatibility:
   unsupportedFeaturePolicy: warn   # ignore | warn | error

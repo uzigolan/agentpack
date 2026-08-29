@@ -84,8 +84,8 @@ class KnowledgeMode(str, Enum):
     stamped into the artifact so a runtime version check can detect drift.
     """
 
+    SERVED = "served"  # default: strip references/; an MCP server serves them at runtime
     BUNDLED = "bundled"  # ship references/ inside the skill
-    SERVED = "served"  # strip references/; an MCP server serves them at runtime
 
 
 SERVED_STAMP = "<!--agentpack-mode:served-->"
@@ -187,7 +187,7 @@ class BuildOptions(StrictModel):
     output: str = "dist"
     clean: bool = True
     reproducible: bool = True
-    knowledge: KnowledgeMode = KnowledgeMode.BUNDLED
+    knowledge: KnowledgeMode = KnowledgeMode.SERVED
 
 
 class AgentPackage(StrictModel):

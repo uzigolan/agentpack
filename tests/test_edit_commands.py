@@ -246,7 +246,7 @@ def test_manifest_comments_survive_editing(tmp_path: Path):
 
     text = manifest.read_text(encoding="utf-8")
     assert "# Register capabilities with:" in text
-    assert "# bundled | served" in text
+    assert "# served | bundled" in text
 
 
 def test_edited_project_builds(tmp_path: Path):

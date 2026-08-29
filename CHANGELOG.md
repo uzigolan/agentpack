@@ -36,6 +36,9 @@ CLI; see [docs/manifest.md](docs/manifest.md).
 
 ### Changed
 
+- The default knowledge mode is now `served`: a skill's `references/` corpus is
+  stripped from artifacts unless you ask for `bundled`. Keeps packages small and
+  lets an MCP server keep the corpus current.
 - `inspect --format` lost its `-f` short alias, which now means `--file`.
 - Manifest load errors exit cleanly with the diagnostic code instead of a
   traceback, whichever entry point is used.

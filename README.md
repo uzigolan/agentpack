@@ -342,12 +342,15 @@ Without `-f`, AgentPack searches the current directory and its parents for an
 **Skill knowledge** — where a skill's `references/` corpus lives:
 
 ```powershell
+agentpack build                        # served (default)
 agentpack build --knowledge bundled    # ships inside the skill; works offline
-agentpack build --knowledge served     # stripped; an MCP server serves it
 ```
 
-Served artifacts get a `<!--agentpack-mode:served-->` stamp so a runtime check
-can tell which mode is installed.
+In `served` mode `references/` is stripped from the artifact and an MCP server
+is expected to provide it at runtime, which keeps skill packages small and the
+corpus centrally updatable. Served artifacts get a `<!--agentpack-mode:served-->`
+stamp so a runtime check can tell which mode is installed. Use `bundled` when
+the skill must work with no MCP connection.
 
 **Strict builds** — any warning fails the build:
 

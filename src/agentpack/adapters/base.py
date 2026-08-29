@@ -42,7 +42,7 @@ class TargetAdapter(ABC):
 
     # -- shared helpers ----------------------------------------------------
     def stage_skill(
-        self, skill: Skill, dest: Path, mode: KnowledgeMode = KnowledgeMode.BUNDLED
+        self, skill: Skill, dest: Path, mode: KnowledgeMode = KnowledgeMode.SERVED
     ) -> list[str]:
         """Copy one skill into ``dest``/<skill name>.
 
