@@ -1,0 +1,56 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e ".[dev]" build
+
+      - name: Tag must match the package version
+        run: |
+          python - <<'PY'
+          import os, sys, tomllib
+          version = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          tag = os.environ["GITHUB_REF_NAME"]
+          if tag != f"v{version}":
+              sys.exit(f"tag {tag} does not match pyproject version {version}")
+          print(f"releasing {tag}")
+          PY
+
+      - name: Checks
+        run: |
+          ruff check src tests
+          pytest -q
+
+      - name: Build distribution
+        run: python -m build
+
+      - name: Build the example packages
+        run: |
+          cd examples/network-operations
+          agentpack package
+          cd -
+          mkdir -p artifacts
+          cp dist/* artifacts/
+          cp examples/network-operations/dist/packages/* artifacts/
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes "See CHANGELOG.md for details."

@@ -1,0 +1,22 @@
+apiVersion: agentpack.dev/v1alpha1
+kind: MCPServer
+
+metadata:
+  name: monitoring
+  description: Remote monitoring MCP server.
+
+transport:
+  type: http
+
+endpoint:
+  url: https://mcp.example.com/mcp
+
+headers:
+  Authorization:
+    source: user
+    required: true
+    secret: true
+    description: "Bearer token for the monitoring MCP endpoint."
+
+capabilities:
+  tools: true

@@ -1,0 +1,38 @@
+apiVersion: agentpack.dev/v1alpha1
+kind: MCPServer
+
+metadata:
+  name: netops
+  displayName: NetOps device access
+  description: Read-only device inventory and health tools.
+
+transport:
+  type: stdio
+
+command:
+  executable: python
+  args:
+    - "-m"
+    - "netops_mcp.server"
+
+environment:
+  NETOPS_INVENTORY:
+    source: user
+    type: file
+    required: true
+    secret: false
+    title: Inventory file
+    description: Path to inventory.yaml (device facts only, never credentials).
+  NETOPS_TOKEN:
+    source: user
+    required: true
+    secret: true
+    description: API token for the device gateway.
+  NETOPS_READONLY:
+    source: literal
+    value: "true"
+
+capabilities:
+  tools: true
+  resources: true
+  prompts: false

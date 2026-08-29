@@ -1,0 +1,50 @@
+name: New target adapter
+description: Request or propose support for another AI client.
+labels: [adapter]
+body:
+  - type: input
+    id: client
+    attributes:
+      label: Client
+      placeholder: "Cursor / Windsurf / Zed / ..."
+    validations:
+      required: true
+
+  - type: input
+    id: docs
+    attributes:
+      label: Link to the official format documentation
+      description: Required. Adapters are never implemented from assumptions.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: capabilities
+    attributes:
+      label: What can the client's package format carry?
+      options:
+        - label: Skills (multiple per package)
+        - label: MCP servers over stdio
+        - label: MCP servers over http/sse
+        - label: A prompt for user-supplied secrets at install time
+        - label: Prompts / agents / commands / hooks
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How does a user install a package?
+      options:
+        - UI import of a file (plugin/bundle/extension)
+        - Marketplace or registry
+        - CLI command provided by the client
+        - Only by editing a config file by hand
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: >-
+        Config file locations per OS, naming restrictions, size limits, signing
+        requirements, minimum client version, official validator.

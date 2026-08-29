@@ -1,0 +1,38 @@
+apiVersion: agentpack.dev/v1alpha1
+kind: AgentPackage
+
+metadata:
+  name: network-operations
+  displayName: Network Operations Toolkit
+  version: 0.1.0
+  description: Skills and MCP integrations for network operations.
+  license: Apache-2.0
+  authors:
+    - name: Example Team
+
+targets:
+  - universal
+  - claude-desktop
+  - claude-code
+  - copilot-vscode
+  - copilot-intellij
+  - codex
+
+skills:
+  - path: skills/
+
+mcp:
+  - path: mcp/
+
+build:
+  output: dist
+  clean: true
+  reproducible: true
+  knowledge: bundled
+
+compatibility:
+  unsupportedFeaturePolicy: warn
+
+targetOptions:
+  copilot-vscode:
+    category: developer-tools

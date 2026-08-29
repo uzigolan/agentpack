@@ -1,0 +1,19 @@
+# Normalize line endings in the repository; check out native on Windows.
+* text=auto
+
+*.py     text diff=python
+*.md     text
+*.yaml   text
+*.yml    text
+*.toml   text
+*.json   text
+*.ps1    text eol=crlf
+*.sh     text eol=lf
+
+*.png    binary
+*.jpg    binary
+*.zip    binary
+*.mcpb   binary
+
+# Keep generated fixtures out of diff noise but still reviewable.
+tests/golden/** linguist-generated=true

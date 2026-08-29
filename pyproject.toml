@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentpack"
+version = "0.1.0"
+description = "Author AI agent capabilities once; package them for many AI clients."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "AgentPack contributors" }]
+keywords = ["mcp", "agent", "skills", "packaging", "mcpb", "claude", "copilot", "codex"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Build Tools",
+]
+dependencies = [
+  "typer>=0.12",
+  "pydantic>=2.6",
+  "PyYAML>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/OWNER/agentpack"
+Documentation = "https://github.com/OWNER/agentpack/tree/main/docs"
+Repository = "https://github.com/OWNER/agentpack"
+Changelog = "https://github.com/OWNER/agentpack/blob/main/CHANGELOG.md"
+Issues = "https://github.com/OWNER/agentpack/issues"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.4",
+]
+
+[project.scripts]
+agentpack = "agentpack.cli:main"
+
+[project.entry-points."agentpack.targets"]
+# Third-party adapters register here.
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentpack"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# `str, Enum` is deliberate: pydantic and typer both rely on the str mixin.
+ignore = ["UP042"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

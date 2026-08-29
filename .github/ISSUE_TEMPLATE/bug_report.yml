@@ -1,0 +1,54 @@
+name: Bug report
+description: Something AgentPack generated is wrong, or a build failed.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: AgentPack version
+      description: Output of `agentpack version`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target
+      options:
+        - claude-desktop
+        - claude-code
+        - copilot-vscode
+        - copilot-intellij
+        - codex
+        - universal
+        - not target specific
+    validations:
+      required: true
+
+  - type: textarea
+    id: manifest
+    attributes:
+      label: Minimal reproduction
+      description: >-
+        The smallest `agentpack.yaml` (plus skill/MCP files) that shows the
+        problem. Remove anything sensitive - do not paste real tokens.
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected vs what happened
+      description: Include the diagnostic code (e.g. AP2201) if one was printed.
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and Python version
+      placeholder: "Windows 11, Python 3.12"
+    validations:
+      required: true

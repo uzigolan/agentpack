@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: pytest -q
+      - name: Example package builds for every target
+        run: |
+          cd examples/network-operations
+          agentpack validate
+          agentpack build --archive
+      - name: Build is reproducible
+        run: |
+          cd examples/network-operations
+          cp dist/agentpack-build.json /tmp/first.json
+          agentpack build --archive
+          python - <<'PY'
+          import json
+          a = json.load(open('/tmp/first.json'))['artifacts']
+          b = json.load(open('dist/agentpack-build.json'))['artifacts']
+          key = lambda xs: sorted((x['target'], x['sha256']) for x in xs)
+          assert key(a) == key(b), 'build output is not deterministic'
+          print('deterministic')
+          PY
