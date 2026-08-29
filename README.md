@@ -46,8 +46,8 @@ Three steps. That's the whole tool.
 ```powershell
 cd path\to\my-capabilities-repo
 
-# 1. create the manifest
-agentpack init --bare -n netops-skills     # or write agentpack.yaml by hand
+# 1. create the manifest - this writes nothing else
+agentpack init -n netops-skills
 
 # 2. register what you ship
 agentpack skill add skills/network-analysis
@@ -58,7 +58,17 @@ agentpack validate
 agentpack package
 ```
 
-`agentpack init` without `--bare` scaffolds a working example to copy from.
+`init` creates only `agentpack.yaml`, `.gitignore` and `README.md`. It does not
+invent `skills/` or `mcp/` directories — pass `--example` if you want a working
+sample to copy from.
+
+All generated artifacts go into one folder, `dist/` by default. Choose another
+at init time, and it is written into the manifest and `.gitignore`:
+
+```powershell
+agentpack init -n netops-skills -o artifacts
+```
+
 Every command also takes `-f` to point at a specific manifest, with any
 filename, from anywhere:
 
@@ -69,7 +79,7 @@ agentpack package  -f D:\repos\netops\netops.agentpack.yaml
 
 Paths inside the manifest (`skills:`, `mcp:`, `include:`, `build.output`) always
 resolve relative to **the manifest's own directory**, never to your current
-directory — so `dist/` lands next to the manifest.
+directory — so the artifact folder lands next to the manifest.
 
 ---
 
@@ -136,9 +146,10 @@ my-capabilities-repo/
 │   │   └── references/     ← optional; skills without it work the same
 │   └── incident-report/
 │       └── SKILL.md
-└── mcp/
-    ├── netops.yaml         ← stdio server
-    └── monitoring.yaml     ← http server
+├── mcp/
+│   ├── netops.yaml         ← stdio server
+│   └── monitoring.yaml     ← http server
+└── dist/                   ← generated; every artifact lands here
 ```
 
 Minimal `agentpack.yaml`:
@@ -238,7 +249,7 @@ mechanism: an install-time prompt (Claude Desktop, VS Code) or a documented
 ## What you get
 
 ```text
-dist/
+dist/                                    # or whatever you set as the output folder
 ├── INSTALL.md                           # start here: every artifact + how to install it
 ├── agentpack-build.json                 # targets, artifact types, sha256 each
 ├── build/                               # unpacked, for inspection and diffing
@@ -305,19 +316,20 @@ what you want when merging catalogs.
 ## Everyday commands
 
 ```powershell
-agentpack init --bare -n NAME           # manifest only, no example
+agentpack init -n NAME [-o FOLDER]      # manifest only; --example adds a sample
 agentpack skill add PATH                # register a skill path (idempotent)
 agentpack mcp add NAME ...              # create and register an MCP definition
 agentpack mcp import FILE.json          # import from a client's JSON config
 agentpack validate                      # is my project correct?
-agentpack build                         # unpacked directories in dist/build/
-agentpack package                       # + distributable archives in dist/packages/
+agentpack build                         # unpacked directories in <output>/build/
+agentpack package                       # + distributable archives in <output>/packages/
 agentpack build --target claude-desktop # just one client
+agentpack build -o somewhere-else       # override the artifact folder for one run
 agentpack validate -f path\to\my.yaml   # use a specific manifest, any filename
 agentpack inspect                       # what the adapters actually see
 agentpack list-targets -v               # clients + capability matrix
 agentpack doctor                        # environment + project health
-agentpack clean                         # remove dist/
+agentpack clean                         # remove the artifact folder
 ```
 
 Without `-f`, AgentPack searches the current directory and its parents for an

@@ -36,7 +36,7 @@ prompts: []
 assets: []
 
 build:
-  output: dist
+  output: {output}
   clean: true
   reproducible: true
   knowledge: bundled   # bundled | served
@@ -93,7 +93,7 @@ capabilities:
   prompts: false
 """
 
-GITIGNORE = """dist/
+GITIGNORE = """{output}/
 .env
 """
 
@@ -121,7 +121,7 @@ skills: []
 mcp: []
 
 build:
-  output: dist
+  output: {output}     # every generated artifact goes here
   knowledge: bundled   # bundled | served
 
 compatibility:
@@ -141,6 +141,7 @@ package for many AI clients.
 {manifest}   canonical manifest
 skills/          agent skills (SKILL.md per directory)
 mcp/             canonical MCP server definitions
+{output}/{output_pad}every generated artifact
 ```
 
 ## Build
@@ -153,7 +154,7 @@ agentpack package{flag}        # distributable archives
 
 ## Install
 
-`dist/INSTALL.md` lists every artifact that was produced and how to install it.
+`{output}/INSTALL.md` lists every artifact that was produced and how to install it.
 """
 
 
@@ -162,24 +163,27 @@ def init_project(
     name: str,
     manifest_name: str = "agentpack.yaml",
     *,
-    bare: bool = False,
+    example: bool = False,
+    output: str = "dist",
 ) -> list[str]:
     directory.mkdir(parents=True, exist_ok=True)
     title = name.replace("-", " ").replace("_", " ").title()
     default_name = manifest_name in ("agentpack.yaml", "agentpack.yml")
 
     files = {
-        manifest_name: (BARE_MANIFEST if bare else MANIFEST).format(
-            api=API_VERSION, name=name, title=title
+        manifest_name: (MANIFEST if example else BARE_MANIFEST).format(
+            api=API_VERSION, name=name, title=title, output=output
         ),
-        ".gitignore": GITIGNORE,
+        ".gitignore": GITIGNORE.format(output=output),
         "README.md": README.format(
             title=title,
             manifest=manifest_name,
+            output=output,
+            output_pad=" " * max(1, 16 - len(output) - 1),
             flag="" if default_name else f" -f {manifest_name}",
         ),
     }
-    if not bare:
+    if example:
         files["skills/example/SKILL.md"] = SKILL
         files["mcp/example.yaml"] = MCP.format(api=API_VERSION)
 

@@ -82,13 +82,17 @@ def init(
     file: Annotated[
         str, typer.Option("--file", "-f", help="Manifest filename to create.")
     ] = "agentpack.yaml",
-    bare: Annotated[
-        bool, typer.Option("--bare", help="Manifest only; no example skill or MCP server.")
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Folder every generated artifact goes into.")
+    ] = "dist",
+    example: Annotated[
+        bool,
+        typer.Option("--example", help="Also scaffold an example skill and MCP server."),
     ] = False,
 ) -> None:
-    """Scaffold a new AgentPack project."""
+    """Scaffold a new AgentPack project. Writes only the manifest unless --example."""
     package_name = name or directory.resolve().name
-    created = scaffold.init_project(directory, package_name, file, bare=bare)
+    created = scaffold.init_project(directory, package_name, file, example=example, output=output)
     if not created:
         typer.secho(f"Nothing to do: {directory} already has these files.", fg=typer.colors.YELLOW)
         return
@@ -96,6 +100,15 @@ def init(
     typer.secho(f"Created {package_name} in {directory}", fg=typer.colors.GREEN)
     for path in created:
         typer.echo(f"  {path}")
+
+    typer.echo(f"\nArtifacts will be written to {output}/.")
+    if not example:
+        typer.echo(
+            "Register capabilities with:\n"
+            "  agentpack skill add skills/my-skill\n"
+            "  agentpack mcp add my-server --command python --arg -m --arg my_mcp.server\n"
+            "  agentpack mcp import path\\to\\mcp.json"
+        )
     if file not in ("agentpack.yaml", "agentpack.yml"):
         typer.echo(f"\nPass -f {file} to every command, or rename it to agentpack.yaml.")
 

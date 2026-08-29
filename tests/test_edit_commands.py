@@ -13,7 +13,7 @@ runner = CliRunner()
 
 def init(tmp_path: Path, *extra: str) -> Path:
     root = tmp_path / "proj"
-    result = runner.invoke(app, ["init", str(root), "--name", "demo", "--bare", *extra])
+    result = runner.invoke(app, ["init", str(root), "--name", "demo", *extra])
     assert result.exit_code == 0, result.output
     return root / "agentpack.yaml"
 
@@ -45,17 +45,41 @@ def test_init_takes_a_name_and_manifest_filename(tmp_path: Path):
     assert "-f netops.agentpack.yaml" in result.output
 
 
-def test_init_bare_writes_no_example(tmp_path: Path):
+def test_init_writes_only_the_manifest_by_default(tmp_path: Path):
     manifest = init(tmp_path)
     assert not (manifest.parent / "skills").exists()
     assert not (manifest.parent / "mcp").exists()
     data = read(manifest)
     assert data["skills"] == [] and data["mcp"] == []
+    assert sorted(p.name for p in manifest.parent.iterdir()) == [
+        ".gitignore",
+        "README.md",
+        "agentpack.yaml",
+    ]
+
+
+def test_init_example_scaffolds_skills_and_mcp(tmp_path: Path):
+    manifest = init(tmp_path, "--example")
+    assert (manifest.parent / "skills" / "example" / "SKILL.md").is_file()
+    assert (manifest.parent / "mcp" / "example.yaml").is_file()
+    assert read(manifest)["skills"] == [{"path": "skills/"}]
+
+
+def test_init_output_sets_the_artifact_folder(tmp_path: Path):
+    manifest = init(tmp_path, "-o", "artifacts")
+    assert read(manifest)["build"]["output"] == "artifacts"
+    assert "artifacts/" in (manifest.parent / ".gitignore").read_text(encoding="utf-8")
+
+    result = runner.invoke(app, ["package", "-f", str(manifest), "-t", "universal"])
+    assert result.exit_code == 0, result.output
+    assert (manifest.parent / "artifacts" / "INSTALL.md").is_file()
+    assert (manifest.parent / "artifacts" / "packages").is_dir()
+    assert not (manifest.parent / "dist").exists()
 
 
 def test_init_defaults_the_name_to_the_directory(tmp_path: Path):
     root = tmp_path / "my-package"
-    runner.invoke(app, ["init", str(root), "--bare"])
+    runner.invoke(app, ["init", str(root)])
     assert read(root / "agentpack.yaml")["metadata"]["name"] == "my-package"
 
 

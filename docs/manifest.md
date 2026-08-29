@@ -79,6 +79,7 @@ targetRaw:                          # escape hatch; use sparingly
 | `targets` | no | Default set built when `--target` is omitted |
 | `include` | no | Paths to other AgentPack projects (see below) |
 | `build.knowledge` | no | Overridable at build time with `--knowledge` |
+| `build.output` | no | Folder every generated artifact goes into; defaults to `dist`. Set it with `agentpack init -o <folder>`, or override one run with `agentpack build -o <folder>`. Resolved relative to the manifest. |
 | `compatibility.unsupportedFeaturePolicy` | no | `error` promotes compatibility warnings to failures |
 
 ## Skills

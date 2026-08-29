@@ -20,7 +20,9 @@ CLI; see [docs/manifest.md](docs/manifest.md).
   `inputs`, an MCPB `manifest.json`, or a bare server object. Placeholders and
   credential-looking keys become user-supplied declarations; no value is copied.
 - `agentpack init` now takes `--name/-n`, `--file/-f` for the manifest filename,
-  and `--bare` for a manifest with no example skill or MCP server.
+  and `--output/-o` for the folder every artifact goes into (written into the
+  manifest and `.gitignore`). It writes **only** the manifest, `.gitignore` and
+  `README.md`; pass `--example` to also scaffold a sample skill and MCP server.
 - `INSTALL.md` at the repo root: pipx / virtualenv / from-source installation,
   verification, upgrade, uninstall and troubleshooting.
 - `dist/INSTALL.md`, generated on every build: an index of every artifact, which
