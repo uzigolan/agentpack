@@ -39,5 +39,5 @@ First working release.
 - Adapter registry with an `agentpack.targets` entry-point group for
   third-party adapters.
 
-[Unreleased]: https://github.com/OWNER/agentpack/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OWNER/agentpack/releases/tag/v0.1.0
+[Unreleased]: https://github.com/uzigolan/agentpack/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/uzigolan/agentpack/releases/tag/v0.1.0

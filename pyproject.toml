@@ -29,11 +29,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/OWNER/agentpack"
-Documentation = "https://github.com/OWNER/agentpack/tree/main/docs"
-Repository = "https://github.com/OWNER/agentpack"
-Changelog = "https://github.com/OWNER/agentpack/blob/main/CHANGELOG.md"
-Issues = "https://github.com/OWNER/agentpack/issues"
+Homepage = "https://github.com/uzigolan/agentpack"
+Documentation = "https://github.com/uzigolan/agentpack/tree/main/docs"
+Repository = "https://github.com/uzigolan/agentpack"
+Changelog = "https://github.com/uzigolan/agentpack/blob/main/CHANGELOG.md"
+Issues = "https://github.com/uzigolan/agentpack/issues"
 
 [project.optional-dependencies]
 dev = [

@@ -1,6 +1,6 @@
 # AgentPack
 
-[![CI](https://github.com/OWNER/agentpack/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/agentpack/actions/workflows/ci.yml)
+[![CI](https://github.com/uzigolan/agentpack/actions/workflows/ci.yml/badge.svg)](https://github.com/uzigolan/agentpack/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
