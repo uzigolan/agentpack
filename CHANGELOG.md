@@ -12,6 +12,8 @@ CLI; see [docs/manifest.md](docs/manifest.md).
 
 ### Added
 
+- `INSTALL.md` at the repo root: pipx / virtualenv / from-source installation,
+  verification, upgrade, uninstall and troubleshooting.
 - `dist/INSTALL.md`, generated on every build: an index of every artifact, which
   client it belongs to, per-client install steps and the required-value table.
 - `TargetAdapter.install_steps()` and `required_values_table()` are now public,

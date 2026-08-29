@@ -16,32 +16,22 @@ and import through each client's own UI.
 [What you get](#what-you-get) · [Combining repos](#combining-repos) ·
 [Everyday commands](#everyday-commands) · [Options](#options) · [Docs](#docs)
 
+Full install instructions: [INSTALL.md](INSTALL.md)
+
 ---
 
 ## Setup
 
-Once, from this repo's root:
+The quickest install — isolated, and on your PATH permanently:
 
 ```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.\.venv\Scripts\Activate.ps1          # puts agentpack on PATH
-```
-
-```bash
-python -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"
-source .venv/bin/activate
-```
-
-Check it:
-
-```powershell
+pipx install git+https://github.com/uzigolan/agentpack.git
 agentpack version
 ```
 
-Activation lasts for the current shell only. In a new shell, activate again or
-call the executable directly: `C:\path\to\agentpack\.venv\Scripts\agentpack.exe`.
+Prefer a virtual environment, or working from a clone? See
+[INSTALL.md](INSTALL.md) for all three options, plus verification and
+troubleshooting.
 
 ---
 
@@ -323,6 +313,7 @@ WARNING AP2201 [codex]: 'monitoring': remote transport requires the experimental
 
 ## Project
 
+- [INSTALL.md](INSTALL.md) — install, verify, upgrade, troubleshoot
 - [CONTRIBUTING.md](CONTRIBUTING.md) — setup, checks, adding an adapter, project rules
 - [SECURITY.md](SECURITY.md) — threat model and reporting
 - [CHANGELOG.md](CHANGELOG.md)

@@ -6,7 +6,6 @@
 ## Setup
 
 From the repo root:
-
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
