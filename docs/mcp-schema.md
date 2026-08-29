@@ -119,7 +119,7 @@ If a server is already configured in a client, import it instead of retyping:
 agentpack mcp import "$env:APPDATA\Code\User\mcp.json"
 agentpack mcp import claude_desktop_config.json
 agentpack mcp import manifest.json                # an MCPB bundle
-agentpack mcp import mcp.json --name netops       # only one server
+agentpack mcp import mcp.json --server netops     # only one server
 agentpack mcp import mcp.json --update            # merge into an existing definition
 ```
 

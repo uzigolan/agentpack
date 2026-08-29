@@ -160,3 +160,75 @@ class CopilotVSCodeAdapter(TargetAdapter):
             "> The root key is `servers`. Do **not** rename it to `mcpServers` — "
             f"{self._client} ignores that spelling.",
         ]
+
+
+class CopilotPluginAdapter(CopilotVSCodeAdapter):
+    """One UI-installable Copilot plugin, independent of the host IDE."""
+
+    name = "copilot"
+    adapter_version = 1
+    _client = "GitHub Copilot"
+
+    def capabilities(self) -> TargetCapabilities:
+        return TargetCapabilities(
+            skills=Support.FULL,
+            mcp_stdio=Support.FULL,
+            mcp_http=Support.FULL,
+            user_config=Support.PARTIAL,
+            prompts=Support.FULL,
+            agents=Support.PARTIAL,
+            commands=Support.FULL,
+            hooks=Support.NONE,
+            artifact_type=ArtifactType.PLUGIN,
+            notes=(
+                "A host-neutral Copilot plugin. Add the generated folder or ZIP through "
+                "Copilot's plugin-management UI in VS Code or IntelliJ; AgentPack never "
+                "writes client configuration directories."
+            ),
+        )
+
+    def build(self, package: AgentPackage, output_dir: Path) -> BuildResult:
+        config = build_mcp_json(self, package)
+        plugin_config: dict = {"mcpServers": config["servers"]}
+        if config.get("inputs"):
+            plugin_config["inputs"] = config["inputs"]
+        write_json(output_dir / ".mcp.json", plugin_config)
+        write_json(output_dir / "mcp.json", config)
+        manifest = {
+            "name": package.metadata.name,
+            "displayName": package.metadata.title,
+            "version": package.metadata.version,
+            "description": package.metadata.description,
+            "author": {"name": package.metadata.author_name},
+            "keywords": package.metadata.keywords,
+        }
+        # Copilot's local-plugin picker recognises the Claude-compatible
+        # manifest location. Keep its native marker too for client-version
+        # compatibility.
+        write_json(output_dir / ".copilot-plugin" / "plugin.json", manifest)
+        write_json(output_dir / ".claude-plugin" / "plugin.json", manifest)
+        self.stage_skills(package, output_dir / "skills")
+        for assets, folder in (
+            (package.prompts, "prompts"),
+            (package.agents, "agents"),
+            (package.commands, "commands"),
+        ):
+            for asset in assets:
+                dest = output_dir / folder / asset.relative_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(asset.source.read_bytes())
+        write_text(output_dir / "README.md", self.readme(package))
+        return BuildResult(
+            target=self.name, output_dir=output_dir, artifact_type=ArtifactType.PLUGIN
+        )
+
+    def install_steps(self, package: AgentPackage) -> list[str]:
+        return [
+            "1. Extract `"
+            f"{package.metadata.name}-copilot-{package.metadata.version}.zip` from "
+            "`dist/packages/` into a folder.",
+            "2. Click Copilot's **Settings** gear. It opens Copilot's plugin settings.",
+            "3. Open **Plugins → + Install Plugin from Source**, then paste or select the "
+            "extracted package folder.",
+            "4. Restart the Copilot session and verify its tools and skills.",
+        ]

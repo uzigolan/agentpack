@@ -10,8 +10,7 @@ ALL_TARGETS = [
     "universal",
     "claude-desktop",
     "claude-code",
-    "copilot-vscode",
-    "copilot-intellij",
+    "copilot",
     "codex",
 ]
 
@@ -42,10 +41,10 @@ def test_build_is_deterministic(package, tmp_path: Path):
     assert digests == other
 
 
-def test_copilot_vscode_uses_servers_key_and_inputs(package, tmp_path: Path):
+def test_copilot_plugin_has_a_manifest_and_mcp_config(package, tmp_path: Path):
     _build(package, tmp_path)
     config = json.loads(
-        (tmp_path / "dist" / "build" / "copilot-vscode" / "mcp.json").read_text(encoding="utf-8")
+        (tmp_path / "dist" / "build" / "copilot" / "mcp.json").read_text(encoding="utf-8")
     )
     assert "servers" in config and "mcpServers" not in config
     ids = {i["id"] for i in config["inputs"]}
@@ -53,6 +52,11 @@ def test_copilot_vscode_uses_servers_key_and_inputs(package, tmp_path: Path):
     assert config["servers"]["netops"]["env"]["NETOPS_TOKEN"] == "${input:netops-netops-token}"
     assert config["servers"]["netops"]["env"]["NETOPS_READONLY"] == "true"
     assert all(i["password"] is not None for i in config["inputs"])
+    plugin = tmp_path / "dist" / "build" / "copilot" / ".copilot-plugin" / "plugin.json"
+    assert json.loads(plugin.read_text(encoding="utf-8"))["name"] == "network-operations"
+    assert (plugin.parents[1] / ".claude-plugin" / "plugin.json").is_file()
+    plugin_mcp = json.loads((plugin.parents[1] / ".mcp.json").read_text(encoding="utf-8"))
+    assert "mcpServers" in plugin_mcp
 
 
 def test_no_secret_value_leaks_into_any_artifact(package, tmp_path: Path):
@@ -80,7 +84,9 @@ def test_claude_desktop_manifest_shape(package, tmp_path: Path):
 
 def test_claude_desktop_ships_skills_as_one_plugin(package, tmp_path: Path):
     _build(package, tmp_path)
-    plugin = tmp_path / "dist" / "build" / "claude-desktop" / "plugin" / "network-operations"
+    plugin = (
+        tmp_path / "dist" / "build" / "claude-desktop" / "cowork-plugin" / "network-operations"
+    )
     assert (plugin / ".claude-plugin" / "plugin.json").is_file()
     assert (plugin / "skills" / "network-analysis" / "SKILL.md").is_file()
     assert (plugin / "skills" / "incident-report" / "SKILL.md").is_file()
@@ -116,13 +122,23 @@ def test_claude_code_uses_mcpservers_key(package, tmp_path: Path):
     assert config["mcpServers"]["monitoring"]["url"] == "https://mcp.example.com/mcp"
 
 
-def test_codex_emits_toml_tables(package, tmp_path: Path):
+def test_codex_emits_installable_plugin(package, tmp_path: Path):
     _build(package, tmp_path)
-    toml = (tmp_path / "dist" / "build" / "codex" / "config.toml").read_text(encoding="utf-8")
-    assert "[mcp_servers.netops]" in toml
-    assert 'type = "local"' in toml
-    assert "[mcp_servers.netops.env]" in toml
-    assert "bearer_token_env_var" in toml
+    plugin_dir = tmp_path / "dist" / "build" / "codex" / "plugins" / "network-operations"
+    manifest = json.loads(
+        (plugin_dir / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
+    )
+    assert manifest["name"] == "network-operations"
+    assert manifest["skills"] == "./skills/"
+    assert manifest["mcpServers"] == "./.mcp.json"
+    mcp = json.loads((plugin_dir / ".mcp.json").read_text(encoding="utf-8"))
+    assert mcp["mcpServers"]["netops"]["type"] == "stdio"
+    marketplace = json.loads(
+        (
+            tmp_path / "dist" / "build" / "codex" / ".agents" / "plugins" / "marketplace.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert marketplace["plugins"][0]["source"]["path"] == "./plugins/network-operations"
 
 
 def test_served_mode_strips_references_and_stamps(package, tmp_path: Path):
@@ -150,6 +166,25 @@ def test_served_is_the_default_when_the_manifest_says_nothing(package, tmp_path:
     assert not (skill_dir / "references").exists()
 
 
+def test_builds_zipped_skill_as_a_normal_skill_folder(project: Path, tmp_path: Path):
+    import zipfile
+
+    archive = project / "skills" / "zipped-skill.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("zipped-skill/SKILL.md", "---\nname: zipped-skill\ndescription: zip\n---\n")
+        zf.writestr("zipped-skill/references/reference.md", "source")
+    from agentpack.core.diagnostics import Diagnostics
+    from agentpack.core.loader import load_package
+
+    package = load_package(project, Diagnostics())
+    package.build.knowledge = KnowledgeMode.BUNDLED
+    summary = build(package, targets=["universal"], output_dir=tmp_path / "dist")
+    assert summary.ok
+    skill_dir = tmp_path / "dist" / "build" / "universal" / "skills" / "zipped-skill"
+    assert (skill_dir / "SKILL.md").is_file()
+    assert (skill_dir / "references" / "reference.md").read_text(encoding="utf-8") == "source"
+
+
 def test_strict_mode_fails_on_warnings(package, tmp_path: Path):
     summary = _build(package, tmp_path, strict=True)
     assert summary.diagnostics.warnings
@@ -169,9 +204,24 @@ def test_claude_desktop_archives_are_split_per_server_plus_skills(package, tmp_p
     summary = _build(package, tmp_path, archive=True)
     claude = next(r for r in summary.results if r.target == "claude-desktop")
     assert sorted(p.name for p in claude.archives) == [
+        "network-operations-claude-desktop-cowork-plugin-0.1.0.plugin",
         "network-operations-claude-desktop-monitoring-0.1.0.mcpb",
         "network-operations-claude-desktop-netops-0.1.0.mcpb",
-        "network-operations-claude-desktop-skills-0.1.0.zip",
+    ]
+
+
+def test_packaging_clears_archives_from_the_previous_run(package, tmp_path: Path):
+    output = tmp_path / "dist"
+    stale = output / "packages" / "old-package.zip"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("stale", encoding="utf-8")
+
+    summary = build(package, targets=["universal"], output_dir=output, archive=True)
+
+    assert summary.ok
+    assert not stale.exists()
+    assert [path.name for path in (output / "packages").iterdir()] == [
+        "network-operations-universal-0.1.0.zip"
     ]
 
 

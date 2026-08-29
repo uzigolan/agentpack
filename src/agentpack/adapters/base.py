@@ -6,6 +6,7 @@ the normalized model, and must never execute anything.
 
 from __future__ import annotations
 
+import zipfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -51,12 +52,31 @@ class TargetAdapter(ABC):
         """
         skill_dir = dest / skill.name
         exclude = ("references",) if mode is KnowledgeMode.SERVED else ()
-        written = [
-            f"{skill.name}/{p}" for p in copy_tree(skill.source_dir, skill_dir, exclude=exclude)
-        ]
+        if skill.source_archive:
+            prefix = f"{skill.archive_root.rstrip('/')}/" if skill.archive_root else ""
+            written = []
+            with zipfile.ZipFile(skill.source_archive) as zf:
+                for member in sorted(zf.infolist(), key=lambda item: item.filename):
+                    if member.is_dir() or not member.filename.startswith(prefix):
+                        continue
+                    relative = member.filename.removeprefix(prefix)
+                    if not relative or relative == "SKILL.md":
+                        continue
+                    if mode is KnowledgeMode.SERVED and relative.startswith("references/"):
+                        continue
+                    target = skill_dir / Path(relative)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(zf.read(member))
+                    written.append(f"{skill.name}/{relative}")
+                skill_text = zf.read(f"{prefix}SKILL.md").decode("utf-8")
+            write_text(skill_dir / "SKILL.md", skill_text)
+        else:
+            written = [
+                f"{skill.name}/{p}" for p in copy_tree(skill.source_dir, skill_dir, exclude=exclude)
+            ]
 
         if mode is KnowledgeMode.SERVED:
-            text = skill.skill_md.read_text(encoding="utf-8")
+            text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
             if SERVED_STAMP not in text:
                 write_text(skill_dir / "SKILL.md", f"{text.rstrip()}\n\n{SERVED_STAMP}")
         return sorted(written)

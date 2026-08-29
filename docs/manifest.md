@@ -37,11 +37,11 @@ metadata:
   authors:
     - name: Example Team
 
-targets: [universal, claude-desktop, claude-code, copilot-vscode, codex]
+targets: [universal, claude-desktop, claude-code, copilot, codex]
 
 include: []                       # other AgentPack projects, by reference
 skills:
-  - path: skills/                   # a directory of skills, or one skill directory
+  - path: skills/                   # folders and/or .zip skill packages, or one skill directory
 mcp:
   - path: mcp/                      # a directory of *.yaml, or one file
 prompts: []
@@ -61,7 +61,7 @@ compatibility:
   unsupportedFeaturePolicy: warn    # ignore | warn | error
 
 targetOptions:
-  copilot-vscode:
+  copilot:
     category: developer-tools
 
 targetRaw:                          # escape hatch; use sparingly
@@ -84,7 +84,7 @@ targetRaw:                          # escape hatch; use sparingly
 
 ## Skills
 
-Each skill is a directory:
+Each generated skill is a directory:
 
 ```text
 skills/network-analysis/
@@ -126,7 +126,7 @@ than their contents:
 metadata:
   name: catalog
   version: 2.0.0
-targets: [claude-desktop, copilot-vscode]
+targets: [claude-desktop, copilot]
 
 include:
   - path: ../repo-a                    # directory containing agentpack.yaml

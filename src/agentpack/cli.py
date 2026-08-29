@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Annotated
 
@@ -12,7 +13,8 @@ import yaml
 from agentpack import API_VERSION, __version__
 from agentpack.core import edit, mcp_import, scaffold
 from agentpack.core.builder import build as run_build
-from agentpack.core.diagnostics import AgentPackError, Diagnostics, Severity
+from agentpack.core.diagnostics import AP1001, AgentPackError, Diagnostics, Severity
+from agentpack.core.fsutil import copy_tree, iter_files
 from agentpack.core.loader import load_package, resolve_manifest
 from agentpack.core.registry import registry
 from agentpack.core.validator import validate as run_validate
@@ -38,6 +40,10 @@ FileOpt = Annotated[
 TargetOpt = Annotated[
     list[str] | None, typer.Option("--target", "-t", help="Target to build. Repeatable.")
 ]
+PackageNameOpt = Annotated[
+    str | None,
+    typer.Option("--name", "-n", help="Package workspace name under artifacts/."),
+]
 
 
 def _echo_diagnostics(diags: Diagnostics) -> None:
@@ -55,10 +61,17 @@ def _fail(exc: AgentPackError) -> typer.Exit:
     return typer.Exit(code=1)
 
 
-def _load(project: Path, file: Path | None = None) -> tuple:
+def _selected_manifest(file: Path | None, package_name: str | None) -> Path | None:
+    if file is not None and package_name is not None:
+        raise AgentPackError(AP1001, "use either --file or --name, not both")
+    return Path("artifacts") / package_name / "agentpack.yaml" if package_name else file
+
+
+def _load(project: Path, file: Path | None = None, package_name: str | None = None) -> tuple:
     diags = Diagnostics()
     try:
-        package = load_package(file if file is not None else project, diags)
+        selected = _selected_manifest(file, package_name)
+        package = load_package(selected if selected is not None else project, diags)
     except AgentPackError as exc:
         raise _fail(exc) from None
     return package, diags
@@ -75,7 +88,10 @@ def main() -> None:
 
 @app.command()
 def init(
-    directory: Annotated[Path, typer.Argument(help="Directory to create.")] = Path("."),
+    directory: Annotated[
+        Path | None,
+        typer.Argument(help="Project directory (default: artifacts/<package-name>)."),
+    ] = None,
     name: Annotated[
         str | None, typer.Option("--name", "-n", help="Package name (default: directory name).")
     ] = None,
@@ -85,29 +101,40 @@ def init(
     output: Annotated[
         str, typer.Option("--output", "-o", help="Folder every generated artifact goes into.")
     ] = "dist",
+    package_version: Annotated[
+        str, typer.Option("--version", help="Initial package version (default: 0.1.0).")
+    ] = "0.1.0",
     example: Annotated[
         bool,
         typer.Option("--example", help="Also scaffold an example skill and MCP server."),
     ] = False,
 ) -> None:
-    """Scaffold a new AgentPack project. Writes only the manifest unless --example."""
-    package_name = name or directory.resolve().name
-    created = scaffold.init_project(directory, package_name, file, example=example, output=output)
+    """Scaffold a package workspace. Defaults to artifacts/<package-name>."""
+    package_name = name or (directory.resolve().name if directory is not None else Path.cwd().name)
+    project_dir = directory or Path("artifacts") / package_name
+    created = scaffold.init_project(
+        project_dir, package_name, file, example=example, output=output, version=package_version
+    )
     if not created:
-        typer.secho(f"Nothing to do: {directory} already has these files.", fg=typer.colors.YELLOW)
+        typer.secho(
+            f"Nothing to do: {project_dir} already has these files.", fg=typer.colors.YELLOW
+        )
         return
 
-    typer.secho(f"Created {package_name} in {directory}", fg=typer.colors.GREEN)
+    typer.secho(f"Created {package_name} in {project_dir}", fg=typer.colors.GREEN)
     for path in created:
         typer.echo(f"  {path}")
 
     typer.echo(f"\nArtifacts will be written to {output}/.")
     if not example:
         typer.echo(
-            "Register capabilities with:\n"
-            "  agentpack skill add skills/my-skill\n"
-            "  agentpack mcp add my-server --command python --arg -m --arg my_mcp.server\n"
-            "  agentpack mcp import path\\to\\mcp.json"
+            "\nNext steps:\n"
+            f"  agentpack version set {package_version} -n {package_name}  # change version later\n"
+            f"  agentpack skill import C:\\path\\to\\skills -n {package_name}\n"
+            f"  agentpack mcp import path\\to\\mcp.json -n {package_name}\n"
+            f"  agentpack package -n {package_name} --knowledge served\n"
+            f"\nThen open artifacts\\{package_name}\\{output}\\INSTALL.md "
+            "for client installation steps."
         )
     if file not in ("agentpack.yaml", "agentpack.yml"):
         typer.echo(f"\nPass -f {file} to every command, or rename it to agentpack.yaml.")
@@ -117,10 +144,11 @@ def init(
 def validate(
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
+    package_name: PackageNameOpt = None,
     target: TargetOpt = None,
 ) -> None:
     """Validate the canonical project and its target compatibility."""
-    pkg, diags = _load(project, file)
+    pkg, diags = _load(project, file, package_name)
     diags.extend(run_validate(pkg, list(target) if target else None))
     _echo_diagnostics(diags)
 
@@ -139,10 +167,11 @@ def validate(
 def inspect(
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
+    package_name: PackageNameOpt = None,
     format: Annotated[str, typer.Option("--format", help="yaml or json")] = "yaml",
 ) -> None:
     """Print the normalized model that adapters receive."""
-    pkg, _ = _load(project, file)
+    pkg, _ = _load(project, file, package_name)
     data = json.loads(pkg.model_dump_json(by_alias=True, exclude_none=True))
     typer.echo(
         json.dumps(data, indent=2)
@@ -155,6 +184,7 @@ def inspect(
 def build(
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
+    package_name: PackageNameOpt = None,
     target: TargetOpt = None,
     output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
     strict: Annotated[bool, typer.Option("--strict", help="Fail on any warning.")] = False,
@@ -167,7 +197,7 @@ def build(
     ] = False,
 ) -> None:
     """Build client packages into dist/."""
-    pkg, diags = _load(project, file)
+    pkg, diags = _load(project, file, package_name)
     if diags.has_errors():
         _echo_diagnostics(diags)
         raise typer.Exit(code=1)
@@ -206,6 +236,7 @@ def build(
 def package_cmd(
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
+    package_name: PackageNameOpt = None,
     target: TargetOpt = None,
     output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
     strict: Annotated[bool, typer.Option("--strict", help="Fail on any warning.")] = False,
@@ -218,6 +249,7 @@ def package_cmd(
     build(
         project=project,
         file=file,
+        package_name=package_name,
         target=target,
         output=output,
         strict=strict,
@@ -247,12 +279,13 @@ def list_targets(
 def clean(
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
+    package_name: PackageNameOpt = None,
     output: Annotated[Path | None, typer.Option()] = None,
 ) -> None:
     """Remove the build output directory."""
     import shutil
 
-    pkg, _ = _load(project, file)
+    pkg, _ = _load(project, file, package_name)
     out = output or (pkg.project_dir / pkg.build.output)
     if out.exists():
         shutil.rmtree(out)
@@ -262,7 +295,9 @@ def clean(
 
 
 @app.command()
-def doctor(project: ProjectOpt = Path("."), file: FileOpt = None) -> None:
+def doctor(
+    project: ProjectOpt = Path("."), file: FileOpt = None, package_name: PackageNameOpt = None
+) -> None:
     """Report environment and project health."""
     import sys
 
@@ -271,7 +306,8 @@ def doctor(project: ProjectOpt = Path("."), file: FileOpt = None) -> None:
     typer.echo(f"python      {sys.version.split()[0]}")
     typer.echo(f"targets     {', '.join(registry.names())}")
     try:
-        manifest = resolve_manifest(file if file is not None else project)
+        selected = _selected_manifest(file, package_name)
+        manifest = resolve_manifest(selected if selected is not None else project)
         typer.secho(f"manifest    {manifest}", fg=typer.colors.GREEN)
         pkg, diags = _load(project, manifest)
         typer.echo(f"skills      {len(pkg.skills)}")
@@ -281,10 +317,15 @@ def doctor(project: ProjectOpt = Path("."), file: FileOpt = None) -> None:
         typer.secho(f"manifest    none ({exc})", fg=typer.colors.YELLOW)
 
 
-@app.command()
-def version() -> None:
-    """Print the AgentPack version."""
-    typer.echo(__version__)
+version_app = typer.Typer(invoke_without_command=True, help="Show or set package versions.")
+app.add_typer(version_app, name="version")
+
+
+@version_app.callback()
+def version(ctx: typer.Context) -> None:
+    """Print the AgentPack version when no version subcommand is supplied."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(__version__)
 
 
 # --------------------------------------------------------------------------
@@ -296,12 +337,31 @@ app.add_typer(skill_app, name="skill")
 app.add_typer(mcp_app, name="mcp")
 
 
-def _open_manifest(project: Path, file: Path | None):
+def _open_manifest(project: Path, file: Path | None, package_name: str | None = None):
     try:
-        manifest = resolve_manifest(file if file is not None else project)
+        selected = _selected_manifest(file, package_name)
+        manifest = resolve_manifest(selected if selected is not None else project)
     except AgentPackError as exc:
         raise _fail(exc) from None
     return manifest, edit.read_doc(manifest)
+
+
+@version_app.command("set")
+def set_package_version(
+    value: Annotated[str, typer.Argument(help="New package version, for example 1.2.3.")],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    package_name: PackageNameOpt = None,
+) -> None:
+    """Set metadata.version in a package workspace manifest."""
+    manifest, doc = _open_manifest(project, file, package_name)
+    metadata = doc.setdefault("metadata", {})
+    previous = metadata.get("version")
+    metadata["version"] = value
+    edit.write_doc(manifest, doc)
+    typer.secho(
+        f"Package version: {previous or 'unset'} -> {value}", fg=typer.colors.GREEN
+    )
 
 
 def _relative_to_manifest(manifest: Path, path: str, key: str) -> str:
@@ -328,9 +388,10 @@ def skill_add(
     path: Annotated[str, typer.Argument(help="Skill directory, relative to the manifest.")],
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
+    package_name: PackageNameOpt = None,
 ) -> None:
     """Register a skill path. Does nothing if it is already covered."""
-    manifest, doc = _open_manifest(project, file)
+    manifest, doc = _open_manifest(project, file, package_name)
     relative = _relative_to_manifest(manifest, path, "skills")
 
     covering = edit.covering_entry(doc, "skills", relative)
@@ -356,14 +417,68 @@ def skill_add(
         )
 
 
+@skill_app.command("import")
+def skill_import(
+    source: Annotated[Path, typer.Argument(help="Skill folder or ZIP to copy into this package.")],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    package_name: PackageNameOpt = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option("--overwrite", help="Replace existing imported skill files without asking."),
+    ] = False,
+) -> None:
+    """Copy a skill collection into this package, then register it once."""
+    manifest, doc = _open_manifest(project, file, package_name)
+    source = source.resolve()
+    if not source.exists() or not (source.is_dir() or source.suffix.lower() == ".zip"):
+        typer.secho(f"ERROR: skill source not found or unsupported: {source}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    destination = manifest.parent / "skills"
+    if source.is_dir():
+        target_dir = destination / source.name if (source / "SKILL.md").is_file() else destination
+        source_files = iter_files(source)
+        conflicts = [target_dir / rel for rel in source_files if (target_dir / rel).exists()]
+        if conflicts and not overwrite:
+            overwrite = typer.confirm(
+                f"Import would overwrite {len(conflicts)} existing file(s) in {target_dir}. "
+                "Overwrite?",
+                default=False,
+            )
+        if conflicts and not overwrite:
+            typer.secho(
+                "Import cancelled; existing skills were left unchanged.", fg=typer.colors.YELLOW
+            )
+            raise typer.Exit(code=1)
+        copy_tree(source, target_dir)
+    else:
+        target = destination / source.name
+        if target.exists() and not overwrite:
+            overwrite = typer.confirm(f"{target} already exists. Overwrite?", default=False)
+        if target.exists() and not overwrite:
+            typer.secho(
+                "Import cancelled; existing skill ZIP was left unchanged.", fg=typer.colors.YELLOW
+            )
+            raise typer.Exit(code=1)
+        destination.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+    edit.add_entry(doc, "skills", "skills")
+    edit.write_doc(manifest, doc)
+    typer.secho(f"Imported skills into {destination}", fg=typer.colors.GREEN)
+    typer.echo("Registered skills: skills")
+
+
 @skill_app.command("remove")
 def skill_remove(
     path: Annotated[str, typer.Argument(help="Skill path to unregister.")],
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
+    package_name: PackageNameOpt = None,
 ) -> None:
     """Unregister a skill path. Files on disk are left alone."""
-    manifest, doc = _open_manifest(project, file)
+    manifest, doc = _open_manifest(project, file, package_name)
     if not edit.remove_entry(doc, "skills", path):
         typer.secho(f"'{edit.normalize(path)}' is not registered.", fg=typer.colors.YELLOW)
         raise typer.Exit(code=1)
@@ -396,6 +511,7 @@ def mcp_add(
     name: Annotated[str, typer.Argument(help="Server name.")],
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
+    package_name: PackageNameOpt = None,
     transport: TransportOpt = "stdio",
     command: CommandOpt = None,
     arg: ArgsOpt = None,
@@ -408,7 +524,7 @@ def mcp_add(
     display_name: Annotated[str | None, typer.Option("--display-name")] = None,
 ) -> None:
     """Create an MCP definition and register it."""
-    manifest, doc = _open_manifest(project, file)
+    manifest, doc = _open_manifest(project, file, package_name)
     mcp_dir = edit.default_dir(doc, "mcp", edit.DEFAULT_MCP_DIR)
     target = manifest.parent / mcp_dir / f"{name}.yaml"
 
@@ -452,6 +568,7 @@ def mcp_update(
     name: Annotated[str, typer.Argument(help="Server name.")],
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
+    package_name: PackageNameOpt = None,
     transport: Annotated[str | None, typer.Option("--transport", "-t")] = None,
     command: CommandOpt = None,
     arg: ArgsOpt = None,
@@ -467,7 +584,7 @@ def mcp_update(
     display_name: Annotated[str | None, typer.Option("--display-name")] = None,
 ) -> None:
     """Change fields of an existing MCP definition, leaving the rest intact."""
-    manifest, doc = _open_manifest(project, file)
+    manifest, doc = _open_manifest(project, file, package_name)
     target = _find_mcp_file(manifest, doc, name)
 
     server = edit.read_doc(target)
@@ -498,29 +615,67 @@ def mcp_import_cmd(
     source: Annotated[Path, typer.Argument(help="JSON file holding one or more MCP servers.")],
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
-    name: Annotated[
+    package_name: PackageNameOpt = None,
+    server_name: Annotated[
         str | None,
-        typer.Option("--name", "-n", help="Import only this server, or name a bare server object."),
+        typer.Option(
+            "--server", "-s", help="Import only this server, or name a bare server object."
+        ),
     ] = None,
     update: Annotated[
         bool, typer.Option("--update", "-u", help="Merge into existing definitions.")
     ] = False,
+    overwrite: Annotated[
+        bool, typer.Option("--overwrite", help="Replace existing definitions without asking.")
+    ] = False,
 ) -> None:
     """Create or update MCP definitions from a client's JSON config."""
-    manifest, doc = _open_manifest(project, file)
+    manifest, doc = _open_manifest(project, file, package_name)
     mcp_dir = edit.default_dir(doc, "mcp", edit.DEFAULT_MCP_DIR)
 
     try:
-        servers = mcp_import.servers_from_json(mcp_import.load_json(source), name)
+        servers = mcp_import.servers_from_json(mcp_import.load_json(source), server_name)
     except AgentPackError as exc:
         raise _fail(exc) from None
+
+    # A producer packing directory owns its HTTP bridge. When importing an
+    # HTTP definition from ``packing/mcps/*.json``, preserve any ready-built
+    # MCPB files next to it instead of asking the Claude adapter to invent a
+    # generic bridge command.
+    imported_http = any(doc.get("transport", {}).get("type") == "http" for _, doc in servers)
+    producer_mcpb_dir = source.resolve().parent.parent / "mcpb"
+    if imported_http and producer_mcpb_dir.is_dir():
+        destination_dir = manifest.parent / "mcpb"
+        configured = doc.setdefault("claudeDesktopMcpb", [])
+        for bundle in sorted(producer_mcpb_dir.glob("*.mcpb")):
+            destination = destination_dir / bundle.name
+            destination_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(bundle, destination)
+            relative = destination.relative_to(manifest.parent).as_posix()
+            if relative not in configured:
+                configured.append(relative)
+            typer.secho(f"Imported producer MCPB: {relative}", fg=typer.colors.GREEN)
+        if any(producer_mcpb_dir.glob("*.mcpb")):
+            edit.write_doc(manifest, doc)
 
     registered = False
     for server_name, incoming in servers:
         target = manifest.parent / mcp_dir / f"{server_name}.yaml"
 
         if target.exists():
-            if not update:
+            if overwrite:
+                edit.write_doc(target, incoming)
+                typer.secho(f"Overwrote {mcp_dir}/{server_name}.yaml", fg=typer.colors.GREEN)
+                continue
+            elif not update:
+                if typer.confirm(
+                    f"{mcp_dir}/{server_name}.yaml exists. Overwrite?", default=False
+                ):
+                    edit.write_doc(target, incoming)
+                    typer.secho(
+                        f"Overwrote {mcp_dir}/{server_name}.yaml", fg=typer.colors.GREEN
+                    )
+                    continue
                 typer.secho(
                     f"{mcp_dir}/{server_name}.yaml exists — pass --update to merge into it.",
                     fg=typer.colors.YELLOW,
@@ -564,12 +719,13 @@ def mcp_remove(
     name: Annotated[str, typer.Argument(help="Server name.")],
     project: ProjectOpt = Path("."),
     file: FileOpt = None,
+    package_name: PackageNameOpt = None,
     keep_file: Annotated[
         bool, typer.Option("--keep-file", help="Unregister only; leave the YAML on disk.")
     ] = False,
 ) -> None:
     """Remove an MCP definition and any manifest entry pointing at it."""
-    manifest, doc = _open_manifest(project, file)
+    manifest, doc = _open_manifest(project, file, package_name)
     target = _find_mcp_file(manifest, doc, name)
     relative = target.relative_to(manifest.parent).as_posix()
 

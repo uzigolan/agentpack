@@ -19,6 +19,8 @@ and import through each client's own UI.
 
 Full install instructions: [INSTALL.md](INSTALL.md)
 
+For the short command workflow, see [Quick start](docs/quickstart.md).
+
 ---
 
 ## Setup
@@ -46,21 +48,34 @@ Three steps. That's the whole tool.
 ```powershell
 cd path\to\my-capabilities-repo
 
-# 1. create the manifest - this writes nothing else
-agentpack init -n netops-skills
+# 1. create a self-contained package workspace
+#    -> artifacts/netops-skills/ (manifest, imported inputs, and dist/ output)
+agentpack init -n netops-skills --version 1.0.0
 
-# 2. register what you ship
-agentpack skill add skills/network-analysis
-agentpack mcp add netops --command python --arg -m --arg netops_mcp.server --secret NETOPS_TOKEN
+# 2. import what you ship into that workspace
+agentpack skill import C:\source-repo\skills -n netops-skills
+agentpack mcp add netops -n netops-skills --command python --arg -m --arg netops_mcp.server --secret NETOPS_TOKEN
 
 # 3. check and build
-agentpack validate
-agentpack package
+agentpack validate -n netops-skills
+agentpack package -n netops-skills
 ```
 
-`init` creates only `agentpack.yaml`, `.gitignore` and `README.md`. It does not
-invent `skills/` or `mcp/` directories — pass `--example` if you want a working
-sample to copy from.
+Without a directory argument, `init` creates `artifacts/<package-name>/` and puts
+only `agentpack.yaml`, `.gitignore` and `README.md` there. It does not invent
+`skills/` or `mcp/` directories — `skill import` creates the local skills copy,
+and `--example` creates a working sample.
+
+Afterwards, pass `-n <package-name>` to the working commands (`skill`, `mcp`,
+`validate`, `build`, `package`, `inspect`, `clean`, or `doctor`). It resolves
+`artifacts/<package-name>/agentpack.yaml` automatically; use `-f` only for a
+manifest outside the standard workspace.
+
+Set the package version later with:
+
+```powershell
+agentpack version set 1.1.0 -n netops-skills
+```
 
 All generated artifacts go into one folder, `dist/` by default. Choose another
 at init time, and it is written into the manifest and `.gitignore`:
@@ -112,8 +127,9 @@ Already have the server configured in a client? Import it instead of retyping:
 agentpack mcp import "$env:APPDATA\Code\User\mcp.json"        # VS Code Copilot
 agentpack mcp import claude_desktop_config.json               # Claude
 agentpack mcp import manifest.json                            # an MCPB bundle
-agentpack mcp import mcp.json --name netops                   # just one server
+agentpack mcp import mcp.json --server netops                 # just one server
 agentpack mcp import mcp.json --update                        # merge into existing
+agentpack mcp import mcp.json --overwrite                     # replace existing definitions
 ```
 
 Recognised shapes: `mcpServers`, `servers` (with `inputs`), an MCPB
@@ -163,16 +179,20 @@ metadata:
   version: 1.0.0
   description: Network operations skills and MCP servers.
 
-targets: [claude-desktop, claude-code, copilot-vscode, codex, universal]
+targets: [claude-desktop, claude-code, copilot, codex, universal]
 
 skills:
-  - path: skills/     # every subdirectory containing a SKILL.md is picked up
+  - path: skills/     # every nested SKILL.md folder and every .zip skill is picked up
 mcp:
   - path: mcp/        # every *.yaml is picked up
 ```
 
 Point `skills:` / `mcp:` at whatever folders you already use — a directory of
-many, or a single skill directory / single file.
+many, or a single skill directory / single file. A registered skills directory
+may mix ordinary skill folders and `.zip` files. Each ZIP may contain one skill
+or a whole skills collection; AgentPack finds every `SKILL.md` and emits the
+same unpacked `<skill-name>/SKILL.md` layout, with `references/` included only
+in `bundled` knowledge mode.
 
 ---
 
@@ -254,17 +274,17 @@ dist/                                    # or whatever you set as the output fol
 ├── agentpack-build.json                 # targets, artifact types, sha256 each
 ├── build/                               # unpacked, for inspection and diffing
 │   ├── claude-desktop/mcpb/<server>/    # one bundle per MCP server
-│   ├── claude-desktop/plugin/<pkg>/     # all skills as one plugin
+│   ├── claude-desktop/cowork-plugin/<pkg>/ # all skills as one Cowork plugin
 │   ├── claude-code/<pkg>/               # plugin dir + .mcp.json + skills/
-│   ├── copilot-vscode/workspace/        # overlay for your own repo
+│   ├── copilot/.copilot-plugin/          # host-neutral Copilot plugin manifest
 │   ├── codex/config.toml + skills/
 │   └── universal/                       # loss-free archive
 └── packages/                            # what you actually distribute
     ├── netops-skills-claude-desktop-netops-1.0.0.mcpb
     ├── netops-skills-claude-desktop-monitoring-1.0.0.mcpb
-    ├── netops-skills-claude-desktop-skills-1.0.0.zip
+    ├── netops-skills-claude-desktop-cowork-plugin-1.0.0.plugin
     ├── netops-skills-claude-code-1.0.0.zip
-    ├── netops-skills-copilot-vscode-1.0.0.zip
+    ├── netops-skills-copilot-1.0.0.zip
     └── netops-skills-codex-1.0.0.zip
 ```
 
@@ -280,10 +300,9 @@ Per client — all of these are package installs, nothing is copied by hand:
 
 | Client | How it is installed |
 |---|---|
-| Claude Desktop | Settings → Extensions → **Install from file** → each `.mcpb`, then the `-skills-` package the same way |
+| Claude Desktop | Settings → Extensions → **Install from file** → each `.mcpb`, then the `.plugin` Cowork skills package |
 | Claude Code | `/plugin marketplace add <dist/build/claude-code>` then `/plugin install <name>` — servers and skills arrive together |
-| Copilot (VS Code) | unzip the workspace overlay over **your own repo**; optionally merge `mcp.json` into your user config |
-| Copilot (JetBrains) | unzip the project overlay; merge `mcp.json` via Settings → Copilot → MCP → Configure |
+| GitHub Copilot | Use the Copilot plugin-management UI in VS Code or IntelliJ to add the package folder or ZIP |
 | Codex | no plugin container: append `config.toml`, extract `skills/` as one unit |
 
 **HTTP MCP + Claude Desktop** is handled for you: Claude Desktop can only launch
@@ -301,7 +320,7 @@ it never re-lists their contents:
 ```yaml
 # catalog/agentpack.yaml
 metadata: { name: catalog, version: 2.0.0 }
-targets: [claude-desktop, copilot-vscode]
+targets: [claude-desktop, copilot]
 
 include:
   - path: ../repo-a                    # a directory containing agentpack.yaml

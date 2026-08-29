@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +56,10 @@ def build(
     build_root = out_root / "build"
     if package.build.clean:
         clean_dir(build_root)
+        # ``package`` promises a fresh distributable set, not a mixture of the
+        # current target selection and archives left by a previous invocation.
+        if archive:
+            clean_dir(out_root / "packages")
     build_root.mkdir(parents=True, exist_ok=True)
 
     results: list[BuildResult] = []
@@ -99,6 +104,14 @@ def build(
             if result.archive_specs:
                 for spec in result.archive_specs:
                     src = final / spec.root
+                    if spec.source_is_file:
+                        if not src.is_file():
+                            continue
+                        destination = packages_dir / (spec.filename or src.name)
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src, destination)
+                        result.archives.append(destination)
+                        continue
                     if not src.is_dir():
                         continue
                     result.archives.append(

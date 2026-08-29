@@ -4,6 +4,9 @@
 dist/
 packages/
 agentpack-build.json
+# Package workspaces and all generated artifacts live here. Their source
+# manifests are local packaging inputs, not repository content.
+artifacts/
 
 # --- Python -----------------------------------------------------------------
 __pycache__/

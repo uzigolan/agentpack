@@ -140,11 +140,12 @@ class ClaudeDesktopAdapter(TargetAdapter):
             runtime = _runtime(command)
         else:
             assert server.endpoint is not None
-            command = "npx"
-            args = ["-y", REMOTE_BRIDGE_PACKAGE, server.endpoint.url]
+            bridge_args = ["-y", REMOTE_BRIDGE_PACKAGE, server.endpoint.url]
             for key, var in sorted(server.headers.items()):
                 value = declare(key, var) if var.source.value == "user" else (var.value or "")
-                args += ["--header", f"{key}: {value}"]
+                bridge_args += ["--header", f"{key}: {value}"]
+            command = "npx"
+            args = bridge_args
             entry_point = REMOTE_BRIDGE_PACKAGE
             runtime = "node"
 
@@ -182,6 +183,8 @@ class ClaudeDesktopAdapter(TargetAdapter):
         specs: list[ArchiveSpec] = []
 
         for server in package.mcp_servers:
+            if server.is_remote and package.claude_desktop_mcpb:
+                continue
             bundle = output_dir / "mcpb" / server.name
             write_json(bundle / "manifest.json", self._manifest(package, server))
             # One .mcpb per server: an MCPB bundle declares exactly one server.
@@ -189,8 +192,25 @@ class ClaudeDesktopAdapter(TargetAdapter):
                 ArchiveSpec(root=f"mcpb/{server.name}", label=server.name, suffix=".mcpb")
             )
 
+        for source in package.claude_desktop_mcpb:
+            destination = output_dir / "producer-mcpb" / source.name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(source.read_bytes())
+            specs.append(
+                ArchiveSpec(
+                    root=f"producer-mcpb/{source.name}",
+                    label="producer-mcpb",
+                    suffix=".mcpb",
+                    source_is_file=True,
+                    filename=source.name,
+                )
+            )
+
         if package.skills:
-            plugin_dir = output_dir / "plugin" / meta.name
+            # Claude Desktop / Cowork imports this ZIP-shaped artifact using
+            # the ``.plugin`` extension. It is deliberately separate from
+            # the MCPB server bundle so the skills package is portable.
+            plugin_dir = output_dir / "cowork-plugin" / meta.name
             write_json(
                 plugin_dir / ".claude-plugin" / "plugin.json",
                 {
@@ -201,7 +221,11 @@ class ClaudeDesktopAdapter(TargetAdapter):
                 },
             )
             self.stage_skills(package, plugin_dir / "skills")
-            specs.append(ArchiveSpec(root=f"plugin/{meta.name}", label="skills"))
+            specs.append(
+                ArchiveSpec(
+                    root=f"cowork-plugin/{meta.name}", label="cowork-plugin", suffix=".plugin"
+                )
+            )
 
         write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(
@@ -214,30 +238,33 @@ class ClaudeDesktopAdapter(TargetAdapter):
     def install_steps(self, package: AgentPackage) -> list[str]:
         meta = package.metadata
         bundles = [
+            f"   - `{path.name}` (producer-built HTTP bridge)"
+            for path in package.claude_desktop_mcpb
+        ]
+        bundles += [
             f"   - `{meta.name}-{self.name}-{s.name}-{meta.version}.mcpb`"
             + (" (remote, needs Node.js)" if s.is_remote else "")
             for s in package.mcp_servers
+            if not (s.is_remote and package.claude_desktop_mcpb)
         ]
         steps = [
             "The installable files are in `dist/packages/` "
             "(run `agentpack package` if they are missing).",
             "",
-            "1. Claude Desktop → **Settings → Extensions → Install from file** → select "
-            "each MCP bundle:",
-            *(bundles or ["   - _no MCP servers in this package_"]),
-            "2. Fill in the prompted configuration values (see below).",
         ]
         if package.skills:
             steps += [
-                f"3. Install the skills package the same way: "
-                f"`{meta.name}-{self.name}-skills-{meta.version}.zip`. "
-                f"It carries all {len(package.skills)} skill(s) as one plugin — there is "
-                "nothing to copy by hand.",
-                "4. Fully quit Claude Desktop (including the system tray icon) and relaunch.",
+                "1. Install the skills plugin: **Claude Desktop → Settings → Manage plugins → "
+                "Add → Upload plugin**. Drag in or select "
+                f"`{meta.name}-{self.name}-cowork-plugin-{meta.version}.plugin`. It creates "
+                f"one plugin with all {len(package.skills)} skill(s).",
             ]
-        else:
-            steps.append(
-                "3. Fully quit Claude Desktop (including the system tray icon) and relaunch."
-            )
+        steps += [
+            "2. Install the MCP extension: **Settings → Extensions → Install extension**. "
+            "Select each server bundle:",
+            *(bundles or ["   - _no MCP servers in this package_"]),
+            "3. Fill in any prompted configuration values, then fully quit Claude Desktop "
+            "(including the system tray icon) and relaunch.",
+        ]
         return steps
 

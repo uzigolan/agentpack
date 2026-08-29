@@ -44,13 +44,13 @@ Emits one MCPB bundle per MCP server, plus a single skills plugin.
 ```text
 dist/build/claude-desktop/
 ├── mcpb/<server>/manifest.json
-├── plugin/<pkg>/.claude-plugin/plugin.json
-├── plugin/<pkg>/skills/<name>/
+├── cowork-plugin/<pkg>/.claude-plugin/plugin.json
+├── cowork-plugin/<pkg>/skills/<name>/
 └── README.md
 
 dist/packages/
 ├── <pkg>-claude-desktop-<server>-<version>.mcpb
-└── <pkg>-claude-desktop-skills-<version>.zip
+└── <pkg>-claude-desktop-cowork-plugin-<version>.plugin
 ```
 
 All of them install through **Settings → Extensions → Install from file**.

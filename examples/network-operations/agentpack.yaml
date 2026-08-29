@@ -14,8 +14,7 @@ targets:
   - universal
   - claude-desktop
   - claude-code
-  - copilot-vscode
-  - copilot-intellij
+  - copilot
   - codex
 
 skills:
@@ -34,5 +33,5 @@ compatibility:
   unsupportedFeaturePolicy: warn
 
 targetOptions:
-  copilot-vscode:
+  copilot:
     category: developer-tools

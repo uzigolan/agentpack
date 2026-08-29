@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import stat
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +16,9 @@ from agentpack.core.diagnostics import (
     AP1002,
     AP1003,
     AP1005,
+    AP1006,
     AP1007,
+    AP2001,
     AgentPackError,
     Diagnostics,
 )
@@ -45,6 +49,13 @@ _ASSET_KINDS = {
     "commands": "command",
     "hooks": "hook",
     "assets": "asset",
+}
+
+# The first AgentPack builds exported IDE-specific Copilot workspace trees.
+# Copilot is now packaged as one UI-installable, host-neutral plugin.
+_TARGET_ALIASES = {
+    "copilot-vscode": "copilot",
+    "copilot-intellij": "copilot",
 }
 
 
@@ -134,6 +145,112 @@ def load_skill(skill_dir: Path, diags: Diagnostics) -> Skill | None:
         body=body,
         files=files,
     )
+
+
+def _zip_member_is_safe(member: zipfile.ZipInfo) -> bool:
+    """Reject paths and links that could escape a generated artifact."""
+    path = member.filename.replace("\\", "/")
+    parts = tuple(part for part in path.split("/") if part)
+    if not path or path.startswith("/") or (parts and ":" in parts[0]):
+        return False
+    if any(part == ".." for part in parts):
+        return False
+    return not stat.S_ISLNK(member.external_attr >> 16)
+
+
+def _load_zip_skill(archive: Path, skill_md_member: str, diags: Diagnostics) -> Skill | None:
+    """Load one skill root from a ZIP without extracting untrusted input."""
+    root = skill_md_member.rsplit("/", 1)[0] if "/" in skill_md_member else ""
+    name = Path(root).name if root else archive.stem
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            text = zf.read(skill_md_member).decode("utf-8")
+            members = sorted(
+                member.filename
+                for member in zf.infolist()
+                if not member.is_dir()
+                and member.filename.startswith(f"{root}/" if root else "")
+                and member.filename != skill_md_member
+            )
+    except (OSError, UnicodeDecodeError, zipfile.BadZipFile) as exc:
+        diags.error(AP1002, f"invalid skill ZIP: {exc}", source=str(archive))
+        return None
+
+    meta, body = parse_frontmatter(text)
+    declared_name = str(meta.get("name") or name)
+    if declared_name != name:
+        diags.error(
+            AP1005,
+            f"frontmatter name '{declared_name}' must match skill root '{name}'",
+            source=f"{archive}!/{skill_md_member}",
+        )
+    description = str(meta.get("description") or "").strip()
+    if not description:
+        diags.error(
+            AP1005, "frontmatter 'description' is required", source=f"{archive}!/{skill_md_member}"
+        )
+    version = meta.get("version")
+    if version is not None and not re.fullmatch(r"\d+\.\d+\.\d+", str(version)):
+        diags.warning(
+            AP1005,
+            f"version '{version}' is not MAJOR.MINOR.PATCH",
+            source=f"{archive}!/{skill_md_member}",
+        )
+    prefix = f"{root}/" if root else ""
+    return Skill(
+        name=name,
+        description=description,
+        version=str(version) if version is not None else None,
+        source_dir=archive,
+        skill_md=archive,
+        frontmatter=meta,
+        body=body,
+        files=[Path(member.removeprefix(prefix)) for member in members],
+        source_archive=archive,
+        archive_root=root,
+    )
+
+
+def load_skill_zip(archive: Path, diags: Diagnostics) -> list[Skill]:
+    """Load every skill root in a ZIP (one skill or a whole skills collection)."""
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            members = zf.infolist()
+            unsafe = next((member for member in members if not _zip_member_is_safe(member)), None)
+            if unsafe:
+                diags.error(
+                    AP1006,
+                    f"unsafe path or symlink in skill ZIP: {unsafe.filename}",
+                    source=str(archive),
+                )
+                return []
+            skill_mds = sorted(
+                member.filename
+                for member in members
+                if not member.is_dir() and Path(member.filename).name == SKILL_FILE
+            )
+    except (OSError, zipfile.BadZipFile) as exc:
+        diags.error(AP1002, f"invalid skill ZIP: {exc}", source=str(archive))
+        return []
+    if not skill_mds:
+        diags.error(AP1002, "ZIP contains no SKILL.md", source=str(archive))
+        return []
+    return [skill for member in skill_mds if (skill := _load_zip_skill(archive, member, diags))]
+
+
+def _skill_candidates(path: Path) -> tuple[list[Path], list[Path]]:
+    """Discover all directory and ZIP skills below a registered skill path."""
+    if path.is_file():
+        directories = [path.parent] if path.name == SKILL_FILE else []
+        archives = [path] if path.suffix.lower() == ".zip" else []
+        return directories, archives
+    if not path.is_dir():
+        return [], []
+    if (path / SKILL_FILE).is_file():
+        return [path], []
+    directories = sorted({skill_md.parent for skill_md in path.rglob(SKILL_FILE)})
+    archives = sorted(path.rglob("*.zip"))
+    return directories, archives
 
 
 # --------------------------------------------------------------------------
@@ -301,20 +418,16 @@ def load_package(
     for entry in data.get("skills") or []:
         raw = entry.get("path") if isinstance(entry, dict) else entry
         path = ensure_inside(project_dir, project_dir / str(raw))
-        candidates = (
-            [path]
-            if (path / SKILL_FILE).is_file()
-            else sorted(p for p in path.iterdir() if p.is_dir())
-            if path.is_dir()
-            else []
-        )
-        if not candidates:
+        candidates, archives = _skill_candidates(path)
+        if not candidates and not archives:
             diags.error(AP1002, f"skill path not found: {raw}")
             continue
         for cand in candidates:
             skill = load_skill(cand, diags)
             if skill:
                 skills.append(skill)
+        for archive in archives:
+            skills.extend(load_skill_zip(archive, diags))
 
     servers: list[MCPServer] = []
     for entry in data.get("mcp") or []:
@@ -331,6 +444,13 @@ def load_package(
             diags.error(AP1003, f"mcp path not found: {raw}")
         for f in files:
             servers.append(load_mcp_server(f, diags))
+    desktop_mcpb: list[Path] = []
+    for raw in data.get("claudeDesktopMcpb") or []:
+        path = ensure_inside(project_dir, project_dir / str(raw))
+        if not path.is_file() or path.suffix.lower() != ".mcpb":
+            diags.error(AP1003, f"Claude Desktop MCPB not found: {raw}")
+            continue
+        desktop_mcpb.append(path)
     assets: dict[str, list[FileAsset]] = {
         key: _collect_assets(project_dir, data.get(key) or [], kind)
         for key, kind in _ASSET_KINDS.items()
@@ -348,11 +468,24 @@ def load_package(
     build_raw = dict(data.get("build") or {})
     compat = (data.get("compatibility") or {}).get("unsupportedFeaturePolicy", "warn")
 
+    targets = [str(target) for target in (data.get("targets") or [])]
+    normalized_targets: list[str] = []
+    for target in targets:
+        normalized = _TARGET_ALIASES.get(target, target)
+        if normalized != target:
+            diags.warning(
+                AP2001,
+                f"target '{target}' now builds the host-neutral '{normalized}' plugin",
+            )
+        if normalized not in normalized_targets:
+            normalized_targets.append(normalized)
+
     return AgentPackage(
         metadata=metadata,
-        targets=[str(t) for t in (data.get("targets") or [])],
+        targets=normalized_targets,
         skills=sorted(skills, key=lambda s: s.name),
         mcp_servers=sorted(servers, key=lambda s: s.name),
+        claude_desktop_mcpb=sorted(desktop_mcpb),
         prompts=assets["prompts"] + assets["instructions"],
         agents=assets["agents"],
         commands=assets["commands"],

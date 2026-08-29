@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -79,6 +80,20 @@ def test_unknown_target_is_an_error(package):
     assert any(d.code == "AP2001" for d in diags.errors)
 
 
+def test_legacy_copilot_targets_load_as_the_generic_plugin(project: Path):
+    manifest = project / "agentpack.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "  - copilot\n", "  - copilot-vscode\n  - copilot-intellij\n"
+        ),
+        encoding="utf-8",
+    )
+    diags = Diagnostics()
+    package = load_package(project, diags)
+    assert package.targets.count("copilot") == 1
+    assert len([item for item in diags.warnings if item.code == "AP2001"]) == 2
+
+
 def test_path_traversal_is_rejected(tmp_path: Path):
     with pytest.raises(AgentPackError) as exc:
         ensure_inside(tmp_path, tmp_path / ".." / "escape")
@@ -88,3 +103,26 @@ def test_path_traversal_is_rejected(tmp_path: Path):
 def test_parse_frontmatter_without_frontmatter():
     meta, body = parse_frontmatter("# no frontmatter\n")
     assert meta == {} and body.startswith("# no")
+
+
+def test_loads_nested_and_zipped_skills(project: Path):
+    nested = project / "skills" / "team" / "nested-skill"
+    nested.mkdir(parents=True)
+    (nested / "SKILL.md").write_text(
+        "---\nname: nested-skill\ndescription: nested\n---\n", encoding="utf-8"
+    )
+    archive = project / "skills" / "zipped-skill.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr(
+            "zipped-skill/SKILL.md",
+            "---\nname: zipped-skill\ndescription: from a ZIP\n---\n",
+        )
+        zf.writestr("zipped-skill/references/guide.md", "reference content")
+
+    pkg = load_package(project, Diagnostics())
+    zipped = next(skill for skill in pkg.skills if skill.name == "zipped-skill")
+    assert {skill.name for skill in pkg.skills} == {
+        "incident-report", "nested-skill", "network-analysis", "zipped-skill"
+    }
+    assert zipped.source_archive == archive
+    assert zipped.has_references

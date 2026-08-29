@@ -1,23 +1,16 @@
-"""OpenAI Codex adapter — TOML configuration export.
-
-Encoded facts:
-- Config file is ``~/.codex/config.toml`` (``%USERPROFILE%\\.codex\\config.toml``).
-  It is **TOML**, not JSON — the single biggest difference from every other
-  target here.
-- Servers are declared as ``[mcp_servers.<name>]`` with ``command``/``args``/``env``.
-- Environment values are a nested ``[mcp_servers.<name>.env]`` table.
-- Skills are directories under ``~/.agents/skills/<name>/SKILL.md``.
-"""
+"""OpenAI Codex adapter — installable plugin directory."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from agentpack.adapters.base import TargetAdapter
+from agentpack.adapters.claude_code import mcp_server_entry
 from agentpack.core.diagnostics import AP2201, Diagnostics
-from agentpack.core.fsutil import write_text
+from agentpack.core.fsutil import write_json, write_text
 from agentpack.models.package import (
     AgentPackage,
+    ArchiveSpec,
     ArtifactType,
     BuildResult,
     Support,
@@ -43,17 +36,15 @@ class CodexAdapter(TargetAdapter):
             skills=Support.FULL,
             mcp_stdio=Support.FULL,
             mcp_http=Support.PARTIAL,
-            user_config=Support.NONE,
+            user_config=Support.PARTIAL,
             prompts=Support.PARTIAL,
             agents=Support.NONE,
             commands=Support.NONE,
             hooks=Support.NONE,
-            artifact_type=ArtifactType.CONFIG_EXPORT,
+            artifact_type=ArtifactType.PLUGIN,
             notes=(
-                "Codex configuration is TOML. Remote MCP servers are only reachable "
-                "through the experimental streamable-HTTP client, and bearer tokens must "
-                "come from an environment variable rather than the config file, so "
-                "AgentPack emits `bearer_token_env_var` instead of the token itself."
+                "A self-contained Codex plugin: install its folder from Codex's Plugins "
+                "screen. It includes both Agent Skills and its MCP server declarations."
             ),
         )
 
@@ -102,26 +93,86 @@ class CodexAdapter(TargetAdapter):
         return "\n".join(lines)
 
     def build(self, package: AgentPackage, output_dir: Path) -> BuildResult:
-        write_text(output_dir / "config.toml", self._config_toml(package))
-        self.stage_skills(package, output_dir / "skills")
+        meta = package.metadata
+        # Codex requires the plugin root directory and manifest name to match.
+        plugin_name = meta.name.lower().replace("_", "-").replace(".", "-")
+        plugin_dir = output_dir / "plugins" / plugin_name
+        description = meta.description or f"{meta.title} skills and MCP tools."
+        manifest = {
+            "name": plugin_name,
+            "version": meta.version,
+            "description": description,
+            "author": {"name": meta.author_name},
+            "skills": "./skills/",
+            "interface": {
+                "displayName": meta.title,
+                "shortDescription": description[:128],
+                "longDescription": description,
+                "developerName": meta.author_name,
+                "category": "Productivity",
+                "capabilities": [],
+                "defaultPrompt": f"Use the {meta.title} skills and MCP tools.",
+            },
+        }
+        if package.mcp_servers:
+            manifest["mcpServers"] = "./.mcp.json"
+            write_json(
+                plugin_dir / ".mcp.json",
+                {"mcpServers": {
+                    server.name: mcp_server_entry(self, server) for server in package.mcp_servers
+                }},
+            )
+        if meta.keywords:
+            manifest["keywords"] = meta.keywords
+        if meta.homepage:
+            manifest["homepage"] = meta.homepage
+        if meta.repository:
+            manifest["repository"] = meta.repository
+        if meta.license:
+            manifest["license"] = meta.license
+
+        write_json(plugin_dir / ".codex-plugin" / "plugin.json", manifest)
+        self.stage_skills(package, plugin_dir / "skills")
+        write_text(plugin_dir / "README.md", self.readme(package))
+        # Codex discovers a marketplace manifest at this exact path within
+        # the selected source directory (not at the source root).
+        write_json(
+            output_dir / ".agents" / "plugins" / "marketplace.json",
+            {
+                "name": f"{plugin_name}-marketplace",
+                "interface": {"displayName": f"{meta.title} Marketplace"},
+                "plugins": [
+                    {
+                        "name": plugin_name,
+                        "source": {"source": "local", "path": f"./plugins/{plugin_name}"},
+                        "policy": {
+                            "installation": "AVAILABLE",
+                            "authentication": "ON_INSTALL",
+                        },
+                        "category": "Productivity",
+                    }
+                ],
+            },
+        )
         write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(
-            target=self.name, output_dir=output_dir, artifact_type=ArtifactType.CONFIG_EXPORT
+            target=self.name,
+            output_dir=output_dir,
+            artifact_type=ArtifactType.PLUGIN,
+            archive_specs=[ArchiveSpec(root=".", label="marketplace")],
         )
 
     def install_steps(self, package: AgentPackage) -> list[str]:  # noqa: ARG002
+        plugin_name = package.metadata.name.lower().replace("_", "-").replace(".", "-")
         return [
-            "Codex has no plugin or extension container, so this target is a "
-            "configuration export: one archive, applied once.",
-            "",
-            "1. Append the tables from `config.toml` to your Codex config:",
-            "   - Windows: `%USERPROFILE%\\.codex\\config.toml`",
-            "   - macOS/Linux: `~/.codex/config.toml`",
-            "2. Replace every `<KEY>` placeholder, and export any token referenced by "
-            "`bearer_token_env_var` in your shell.",
-            "3. Extract the whole `skills/` directory from this archive into your agent "
-            "skills directory in one step — do not pick skills individually:",
-            "   - Windows: `%USERPROFILE%\\.agents\\skills\\`",
-            "   - macOS/Linux: `~/.agents/skills/`",
-            "4. Restart Codex (CLI session or IDE extension).",
+            "1. Extract `"
+            f"{package.metadata.name}-codex-marketplace-{package.metadata.version}.zip` from "
+            "`dist/packages/` into a folder.",
+            "2. Click Codex's **Settings** gear, then choose **Codex Settings** to open the "
+            "Settings UI.",
+            "3. Open **Plugins → Add → + Add a marketplace** and select the extracted folder "
+            "(it contains `.agents/plugins/marketplace.json`).",
+            f"4. Find `{plugin_name}` in the Plugins list and choose **Install**.",
+            "The plugin contains its skills and MCP server configuration; start a new thread "
+            "after installation.",
         ]

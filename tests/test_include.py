@@ -137,7 +137,7 @@ def test_circular_include_is_detected(tmp_path: Path):
     assert any(d.code == AP1007 and "circular" in d.message for d in diags.errors)
 
 
-@pytest.mark.parametrize("target", ["universal", "claude-desktop", "copilot-vscode"])
+@pytest.mark.parametrize("target", ["universal", "claude-desktop", "copilot"])
 def test_aggregated_package_builds(tmp_path: Path, target: str):
     from agentpack.core.builder import build
 

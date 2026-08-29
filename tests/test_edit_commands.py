@@ -45,6 +45,13 @@ def test_init_takes_a_name_and_manifest_filename(tmp_path: Path):
     assert "-f netops.agentpack.yaml" in result.output
 
 
+def test_init_accepts_a_package_version(tmp_path: Path):
+    root = tmp_path / "anything"
+    result = runner.invoke(app, ["init", str(root), "-n", "netops-skills", "--version", "1.4.0"])
+    assert result.exit_code == 0, result.output
+    assert read(root / "agentpack.yaml")["metadata"]["version"] == "1.4.0"
+
+
 def test_init_writes_only_the_manifest_by_default(tmp_path: Path):
     manifest = init(tmp_path)
     assert not (manifest.parent / "skills").exists()
@@ -81,6 +88,13 @@ def test_init_defaults_the_name_to_the_directory(tmp_path: Path):
     root = tmp_path / "my-package"
     runner.invoke(app, ["init", str(root)])
     assert read(root / "agentpack.yaml")["metadata"]["name"] == "my-package"
+
+
+def test_init_without_a_directory_creates_an_artifacts_package(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["init", "--name", "rad-agent-toolkit"])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "artifacts" / "rad-agent-toolkit" / "agentpack.yaml").is_file()
 
 
 # --------------------------------------------------------------------------
@@ -144,6 +158,74 @@ def test_skill_add_rejects_a_path_outside_the_project(tmp_path: Path):
     assert result.exit_code == 1
     assert "is outside the project" in result.output
     assert read(manifest)["skills"] == []
+
+
+def test_skill_import_copies_an_external_collection_into_the_package(tmp_path: Path):
+    manifest = init(tmp_path)
+    external = tmp_path / "source-repo" / "skills"
+    for name in ("alpha", "beta"):
+        directory = external / name
+        directory.mkdir(parents=True)
+        (directory / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: {name} skill.\n---\n", encoding="utf-8"
+        )
+    (external / "alpha" / "references").mkdir()
+    (external / "alpha" / "references" / "guide.md").write_text("guide", encoding="utf-8")
+
+    result = runner.invoke(app, ["skill", "import", str(external), "-f", str(manifest)])
+    assert result.exit_code == 0, result.output
+    assert (manifest.parent / "skills" / "alpha" / "references" / "guide.md").is_file()
+    assert (manifest.parent / "skills" / "beta" / "SKILL.md").is_file()
+    assert read(manifest)["skills"] == [{"path": "skills"}]
+
+
+def test_skill_import_confirms_before_overwriting(tmp_path: Path):
+    manifest = init(tmp_path)
+    external = tmp_path / "source" / "skills" / "alpha"
+    external.mkdir(parents=True)
+    (external / "SKILL.md").write_text(
+        "---\nname: alpha\ndescription: new text\n---\n", encoding="utf-8"
+    )
+    target = manifest.parent / "skills" / "alpha"
+    target.mkdir(parents=True)
+    (target / "SKILL.md").write_text(
+        "---\nname: alpha\ndescription: old text\n---\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(
+        app, ["skill", "import", str(external.parent), "-f", str(manifest)], input="y\n"
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "new text" in (target / "SKILL.md").read_text(encoding="utf-8")
+
+
+def test_name_selects_the_artifacts_workspace_for_everyday_commands(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner.invoke(app, ["init", "-n", "demo"])
+    external = tmp_path / "source" / "skills" / "alpha"
+    external.mkdir(parents=True)
+    (external / "SKILL.md").write_text(
+        "---\nname: alpha\ndescription: alpha skill.\n---\n", encoding="utf-8"
+    )
+
+    imported = runner.invoke(app, ["skill", "import", str(external.parent), "-n", "demo"])
+    built = runner.invoke(app, ["package", "-n", "demo", "-t", "universal"])
+
+    assert imported.exit_code == 0, imported.output
+    assert built.exit_code == 0, built.output
+    assert (tmp_path / "artifacts" / "demo" / "skills" / "alpha" / "SKILL.md").is_file()
+    package = tmp_path / "artifacts" / "demo" / "dist" / "packages" / "demo-universal-0.1.0.zip"
+    assert package.is_file()
+
+
+def test_version_set_updates_the_named_workspace(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner.invoke(app, ["init", "-n", "demo"])
+    result = runner.invoke(app, ["version", "set", "2.1.0", "-n", "demo"])
+    assert result.exit_code == 0, result.output
+    manifest = tmp_path / "artifacts" / "demo" / "agentpack.yaml"
+    assert read(manifest)["metadata"]["version"] == "2.1.0"
 
 
 def test_skill_remove(tmp_path: Path):
@@ -419,7 +501,7 @@ def test_import_bare_object_needs_a_name(tmp_path: Path):
     assert "needs --name" in without.output
 
     with_name = runner.invoke(
-        app, ["mcp", "import", str(source), "-f", str(manifest), "--name", "thing"]
+        app, ["mcp", "import", str(source), "-f", str(manifest), "--server", "thing"]
     )
     assert with_name.exit_code == 0, with_name.output
     assert (manifest.parent / "mcp" / "thing.yaml").is_file()
@@ -431,7 +513,7 @@ def test_import_can_select_one_server(tmp_path: Path):
         tmp_path / "many.json",
         {"mcpServers": {"a": {"command": "a"}, "b": {"command": "b"}}},
     )
-    runner.invoke(app, ["mcp", "import", str(source), "-f", str(manifest), "-n", "b"])
+    runner.invoke(app, ["mcp", "import", str(source), "-f", str(manifest), "-s", "b"])
     assert (manifest.parent / "mcp" / "b.yaml").is_file()
     assert not (manifest.parent / "mcp" / "a.yaml").exists()
 
@@ -441,9 +523,22 @@ def test_import_does_not_overwrite_without_update(tmp_path: Path):
     runner.invoke(app, ["mcp", "add", "netops", "-f", str(manifest), "-c", "python"])
     source = write_json(tmp_path / "j.json", {"mcpServers": {"netops": {"command": "node"}}})
 
-    result = runner.invoke(app, ["mcp", "import", str(source), "-f", str(manifest)])
-    assert "pass --update" in result.output
+    result = runner.invoke(app, ["mcp", "import", str(source), "-f", str(manifest)], input="n\n")
+    assert "exists" in result.output
     assert read(manifest.parent / "mcp" / "netops.yaml")["command"]["executable"] == "python"
+
+
+def test_import_overwrites_mcp_definition_after_confirmation(tmp_path: Path):
+    manifest = init(tmp_path)
+    runner.invoke(app, ["mcp", "add", "netops", "-f", str(manifest), "-c", "python"])
+    source = write_json(tmp_path / "j.json", {"mcpServers": {"netops": {"command": "node"}}})
+
+    result = runner.invoke(
+        app, ["mcp", "import", str(source), "-f", str(manifest)], input="y\n"
+    )
+
+    assert result.exit_code == 0, result.output
+    assert read(manifest.parent / "mcp" / "netops.yaml")["command"]["executable"] == "node"
 
 
 def test_import_update_merges_values(tmp_path: Path):
@@ -497,5 +592,5 @@ def test_imported_project_builds(tmp_path: Path):
     )
     runner.invoke(app, ["mcp", "import", str(source), "-f", str(manifest)])
 
-    result = runner.invoke(app, ["build", "-f", str(manifest), "-t", "copilot-vscode"])
+    result = runner.invoke(app, ["build", "-f", str(manifest), "-t", "copilot"])
     assert result.exit_code == 0, result.output

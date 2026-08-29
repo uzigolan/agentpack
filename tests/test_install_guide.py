@@ -5,7 +5,7 @@ from pathlib import Path
 
 from agentpack.core.builder import build
 
-ALL_TARGETS = ["universal", "claude-desktop", "copilot-vscode", "codex"]
+ALL_TARGETS = ["universal", "claude-desktop", "copilot", "codex"]
 
 
 def _guide(package, tmp_path: Path, **kw) -> tuple[Path, str]:
@@ -29,7 +29,7 @@ def test_install_guide_lists_every_target(package, tmp_path: Path):
 def test_install_guide_lists_archive_filenames(package, tmp_path: Path):
     _, text = _guide(package, tmp_path, archive=True)
     assert "packages/network-operations-claude-desktop-netops-0.1.0.mcpb" in text
-    assert "packages/network-operations-codex-0.1.0.zip" in text
+    assert "packages/network-operations-codex-marketplace-0.1.0.zip" in text
 
 
 def test_install_guide_falls_back_to_directories_without_archives(package, tmp_path: Path):

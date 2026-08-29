@@ -17,8 +17,7 @@ if TYPE_CHECKING:
 _BUILTINS: dict[str, tuple[str, str]] = {
     "claude-desktop": ("agentpack.adapters.claude_desktop", "ClaudeDesktopAdapter"),
     "claude-code": ("agentpack.adapters.claude_code", "ClaudeCodeAdapter"),
-    "copilot-vscode": ("agentpack.adapters.copilot_vscode", "CopilotVSCodeAdapter"),
-    "copilot-intellij": ("agentpack.adapters.copilot_intellij", "CopilotIntelliJAdapter"),
+    "copilot": ("agentpack.adapters.copilot_vscode", "CopilotPluginAdapter"),
     "codex": ("agentpack.adapters.codex", "CodexAdapter"),
     "universal": ("agentpack.adapters.universal", "UniversalAdapter"),
 }

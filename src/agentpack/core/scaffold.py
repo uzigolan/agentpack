@@ -13,7 +13,7 @@ kind: AgentPackage
 metadata:
   name: {name}
   displayName: {title}
-  version: 0.1.0
+  version: {version}
   description: Describe what this package gives an AI agent.
   license: Apache-2.0
   authors:
@@ -23,7 +23,7 @@ targets:
   - universal
   - claude-desktop
   - claude-code
-  - copilot-vscode
+  - copilot
   - codex
 
 skills:
@@ -103,14 +103,14 @@ kind: AgentPackage
 metadata:
   name: {name}
   displayName: {title}
-  version: 0.1.0
+  version: {version}
   description: Describe what this package gives an AI agent.
 
 targets:
   - universal
   - claude-desktop
   - claude-code
-  - copilot-vscode
+  - copilot
   - codex
 
 # Register capabilities with:
@@ -165,6 +165,7 @@ def init_project(
     *,
     example: bool = False,
     output: str = "dist",
+    version: str = "0.1.0",
 ) -> list[str]:
     directory.mkdir(parents=True, exist_ok=True)
     title = name.replace("-", " ").replace("_", " ").title()
@@ -172,7 +173,7 @@ def init_project(
 
     files = {
         manifest_name: (MANIFEST if example else BARE_MANIFEST).format(
-            api=API_VERSION, name=name, title=title, output=output
+            api=API_VERSION, name=name, title=title, output=output, version=version
         ),
         ".gitignore": GITIGNORE.format(output=output),
         "README.md": README.format(

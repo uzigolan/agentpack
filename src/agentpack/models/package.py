@@ -59,7 +59,12 @@ class PackageMetadata(StrictModel):
 # Skills
 # --------------------------------------------------------------------------
 class Skill(StrictModel):
-    """A directory-based Agent Skill (SKILL.md + optional supporting files)."""
+    """An Agent Skill (SKILL.md + optional supporting files).
+
+    Source skills can be ordinary directories or a skill root inside a ZIP.
+    ZIPs are consumed as source material only; generated artifacts always
+    contain the normal unpacked ``<skill>/SKILL.md`` layout.
+    """
 
     name: str
     description: str = ""
@@ -70,6 +75,10 @@ class Skill(StrictModel):
     body: str = ""
     files: list[Path] = Field(default_factory=list)
     """Paths relative to ``source_dir``, excluding SKILL.md. Sorted."""
+    source_archive: Path | None = None
+    """ZIP source when the skill was supplied as an archive."""
+    archive_root: str = ""
+    """POSIX path to the skill root within ``source_archive`` (empty at ZIP root)."""
 
     @property
     def has_references(self) -> bool:
@@ -197,6 +206,7 @@ class AgentPackage(StrictModel):
     targets: list[str] = Field(default_factory=list)
     skills: list[Skill] = Field(default_factory=list)
     mcp_servers: list[MCPServer] = Field(default_factory=list)
+    claude_desktop_mcpb: list[Path] = Field(default_factory=list)
     prompts: list[FileAsset] = Field(default_factory=list)
     agents: list[FileAsset] = Field(default_factory=list)
     commands: list[FileAsset] = Field(default_factory=list)
@@ -257,6 +267,8 @@ class ArchiveSpec(StrictModel):
     root: str
     label: str
     suffix: str = ".zip"
+    source_is_file: bool = False
+    filename: str | None = None
 
 
 class BuildResult(StrictModel):
