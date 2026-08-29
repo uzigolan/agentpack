@@ -97,16 +97,48 @@ GITIGNORE = """dist/
 .env
 """
 
+BARE_MANIFEST = """apiVersion: {api}
+kind: AgentPackage
+
+metadata:
+  name: {name}
+  displayName: {title}
+  version: 0.1.0
+  description: Describe what this package gives an AI agent.
+
+targets:
+  - universal
+  - claude-desktop
+  - claude-code
+  - copilot-vscode
+  - codex
+
+# Register capabilities with:
+#   agentpack skill add skills/my-skill
+#   agentpack mcp add my-server --command python --arg -m --arg my_mcp.server
+skills: []
+
+mcp: []
+
+build:
+  output: dist
+  knowledge: bundled   # bundled | served
+
+compatibility:
+  unsupportedFeaturePolicy: warn   # ignore | warn | error
+"""
+
 README = """# {title}
 
-Built with [AgentPack](https://github.com/) - author once, package for many AI clients.
+Built with [AgentPack](https://github.com/uzigolan/agentpack) - author once,
+package for many AI clients.
 
 **Contents:** [Layout](#layout) · [Build](#build) · [Install](#install)
 
 ## Layout
 
 ```text
-agentpack.yaml   canonical manifest
+{manifest}   canonical manifest
 skills/          agent skills (SKILL.md per directory)
 mcp/             canonical MCP server definitions
 ```
@@ -114,28 +146,43 @@ mcp/             canonical MCP server definitions
 ## Build
 
 ```bash
-agentpack validate
-agentpack build
-agentpack package        # distributable archives
+agentpack validate{flag}
+agentpack build{flag}
+agentpack package{flag}        # distributable archives
 ```
 
 ## Install
 
-Each directory under `dist/build/<target>/` contains a README with the exact
-install steps for that client.
+`dist/INSTALL.md` lists every artifact that was produced and how to install it.
 """
 
 
-def init_project(directory: Path, name: str) -> list[str]:
+def init_project(
+    directory: Path,
+    name: str,
+    manifest_name: str = "agentpack.yaml",
+    *,
+    bare: bool = False,
+) -> list[str]:
     directory.mkdir(parents=True, exist_ok=True)
     title = name.replace("-", " ").replace("_", " ").title()
+    default_name = manifest_name in ("agentpack.yaml", "agentpack.yml")
+
     files = {
-        "agentpack.yaml": MANIFEST.format(api=API_VERSION, name=name, title=title),
-        "skills/example/SKILL.md": SKILL,
-        "mcp/example.yaml": MCP.format(api=API_VERSION),
+        manifest_name: (BARE_MANIFEST if bare else MANIFEST).format(
+            api=API_VERSION, name=name, title=title
+        ),
         ".gitignore": GITIGNORE,
-        "README.md": README.format(title=title),
+        "README.md": README.format(
+            title=title,
+            manifest=manifest_name,
+            flag="" if default_name else f" -f {manifest_name}",
+        ),
     }
+    if not bare:
+        files["skills/example/SKILL.md"] = SKILL
+        files["mcp/example.yaml"] = MCP.format(api=API_VERSION)
+
     written: list[str] = []
     for rel, content in files.items():
         path = directory / rel

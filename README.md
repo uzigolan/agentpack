@@ -11,7 +11,8 @@ AgentPack never writes into `~/.claude`, `~/.codex` or your VS Code profile, and
 skills are never installed one by one. It produces packages you version, publish
 and import through each client's own UI.
 
-**Contents:** [Setup](#setup) · [How to work](#how-to-work) · [Your repo layout](#your-repo-layout) ·
+**Contents:** [Setup](#setup) · [How to work](#how-to-work) · [Editing the manifest](#editing-the-manifest) ·
+[Your repo layout](#your-repo-layout) ·
 [Writing a skill](#writing-a-skill) · [Writing an MCP definition](#writing-an-mcp-definition) ·
 [What you get](#what-you-get) · [Combining repos](#combining-repos) ·
 [Everyday commands](#everyday-commands) · [Options](#options) · [Docs](#docs)
@@ -45,19 +46,21 @@ Three steps. That's the whole tool.
 ```powershell
 cd path\to\my-capabilities-repo
 
-# 1. add one file to the repo that produces your skills and MCP servers
-agentpack init            # optional: scaffolds an example to copy from
+# 1. create the manifest
+agentpack init --bare -n netops-skills     # or write agentpack.yaml by hand
 
-# 2. check it
+# 2. register what you ship
+agentpack skill add skills/network-analysis
+agentpack mcp add netops --command python --arg -m --arg netops_mcp.server --secret NETOPS_TOKEN
+
+# 3. check and build
 agentpack validate
-
-# 3. build installable artifacts
 agentpack package
 ```
 
-`agentpack init` only writes a starter example — most people write
-`agentpack.yaml` by hand. Every command also takes `-f` to point at a specific
-manifest, with any filename, from anywhere:
+`agentpack init` without `--bare` scaffolds a working example to copy from.
+Every command also takes `-f` to point at a specific manifest, with any
+filename, from anywhere:
 
 ```powershell
 agentpack validate -f D:\repos\netops\netops.agentpack.yaml
@@ -67,6 +70,49 @@ agentpack package  -f D:\repos\netops\netops.agentpack.yaml
 Paths inside the manifest (`skills:`, `mcp:`, `include:`, `build.output`) always
 resolve relative to **the manifest's own directory**, never to your current
 directory — so `dist/` lands next to the manifest.
+
+---
+
+## Editing the manifest
+
+You can write `agentpack.yaml` by hand, or let AgentPack maintain it. Edits are
+round-tripped, so your comments and formatting survive.
+
+```powershell
+# skills - registering the same path twice is a no-op
+agentpack skill add skills/network-analysis
+agentpack skill remove skills/network-analysis     # unregisters; files stay
+
+# MCP servers
+agentpack mcp add netops --command python --arg -m --arg netops_mcp.server ‹
+                        --secret NETOPS_TOKEN --env NETOPS_READONLY=true
+agentpack mcp add monitoring -t http -u https://mcp.example.com/mcp --header Authorization
+agentpack mcp update netops -d "Read-only device access" --remove-env NETOPS_READONLY
+agentpack mcp remove monitoring
+```
+
+`skill add` already covered by a parent entry (`skills:`) reports it and changes
+nothing. `mcp add` creates `mcp/<name>.yaml` and registers the directory once.
+
+### Importing MCP servers from JSON
+
+Already have the server configured in a client? Import it instead of retyping:
+
+```powershell
+agentpack mcp import "$env:APPDATA\Code\User\mcp.json"        # VS Code Copilot
+agentpack mcp import claude_desktop_config.json               # Claude
+agentpack mcp import manifest.json                            # an MCPB bundle
+agentpack mcp import mcp.json --name netops                   # just one server
+agentpack mcp import mcp.json --update                        # merge into existing
+```
+
+Recognised shapes: `mcpServers`, `servers` (with `inputs`), an MCPB
+`manifest.json`, or a bare server object (needs `--name`).
+
+**Secrets are never carried over.** A `${input:x}` / `${user_config.x}` /
+`<KEY>` placeholder becomes `source: user`, using the client's own metadata for
+the description and whether it is a password. A real credential sitting in the
+JSON is also converted to `source: user, secret: true` — the value is dropped.
 
 Then open `dist/INSTALL.md` — it lists every artifact that was produced, which
 client each one is for, the exact install steps and the values the user must
@@ -259,6 +305,10 @@ what you want when merging catalogs.
 ## Everyday commands
 
 ```powershell
+agentpack init --bare -n NAME           # manifest only, no example
+agentpack skill add PATH                # register a skill path (idempotent)
+agentpack mcp add NAME ...              # create and register an MCP definition
+agentpack mcp import FILE.json          # import from a client's JSON config
 agentpack validate                      # is my project correct?
 agentpack build                         # unpacked directories in dist/build/
 agentpack package                       # + distributable archives in dist/packages/

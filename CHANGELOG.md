@@ -12,6 +12,15 @@ CLI; see [docs/manifest.md](docs/manifest.md).
 
 ### Added
 
+- `agentpack skill add|remove` and `agentpack mcp add|update|remove` to maintain
+  an existing manifest. `skill add` is idempotent and recognises a covering
+  parent entry. Edits are round-tripped, so comments and formatting survive.
+- `agentpack mcp import FILE.json` to create or (`--update`) merge MCP
+  definitions from a client's JSON config: `mcpServers`, `servers` with
+  `inputs`, an MCPB `manifest.json`, or a bare server object. Placeholders and
+  credential-looking keys become user-supplied declarations; no value is copied.
+- `agentpack init` now takes `--name/-n`, `--file/-f` for the manifest filename,
+  and `--bare` for a manifest with no example skill or MCP server.
 - `INSTALL.md` at the repo root: pipx / virtualenv / from-source installation,
   verification, upgrade, uninstall and troubleshooting.
 - `dist/INSTALL.md`, generated on every build: an index of every artifact, which

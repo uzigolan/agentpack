@@ -10,7 +10,7 @@ import typer
 import yaml
 
 from agentpack import API_VERSION, __version__
-from agentpack.core import scaffold
+from agentpack.core import edit, mcp_import, scaffold
 from agentpack.core.builder import build as run_build
 from agentpack.core.diagnostics import AgentPackError, Diagnostics, Severity
 from agentpack.core.loader import load_package, resolve_manifest
@@ -76,13 +76,28 @@ def main() -> None:
 @app.command()
 def init(
     directory: Annotated[Path, typer.Argument(help="Directory to create.")] = Path("."),
-    name: Annotated[str | None, typer.Option(help="Package name.")] = None,
+    name: Annotated[
+        str | None, typer.Option("--name", "-n", help="Package name (default: directory name).")
+    ] = None,
+    file: Annotated[
+        str, typer.Option("--file", "-f", help="Manifest filename to create.")
+    ] = "agentpack.yaml",
+    bare: Annotated[
+        bool, typer.Option("--bare", help="Manifest only; no example skill or MCP server.")
+    ] = False,
 ) -> None:
     """Scaffold a new AgentPack project."""
-    created = scaffold.init_project(directory, name or directory.resolve().name)
-    typer.secho(f"Created {len(created)} files in {directory}", fg=typer.colors.GREEN)
+    package_name = name or directory.resolve().name
+    created = scaffold.init_project(directory, package_name, file, bare=bare)
+    if not created:
+        typer.secho(f"Nothing to do: {directory} already has these files.", fg=typer.colors.YELLOW)
+        return
+
+    typer.secho(f"Created {package_name} in {directory}", fg=typer.colors.GREEN)
     for path in created:
         typer.echo(f"  {path}")
+    if file not in ("agentpack.yaml", "agentpack.yml"):
+        typer.echo(f"\nPass -f {file} to every command, or rename it to agentpack.yaml.")
 
 
 @app.command()
@@ -257,6 +272,291 @@ def doctor(project: ProjectOpt = Path("."), file: FileOpt = None) -> None:
 def version() -> None:
     """Print the AgentPack version."""
     typer.echo(__version__)
+
+
+# --------------------------------------------------------------------------
+# Manifest editing
+# --------------------------------------------------------------------------
+skill_app = typer.Typer(no_args_is_help=True, help="Register skill paths in the manifest.")
+mcp_app = typer.Typer(no_args_is_help=True, help="Manage MCP server definitions.")
+app.add_typer(skill_app, name="skill")
+app.add_typer(mcp_app, name="mcp")
+
+
+def _open_manifest(project: Path, file: Path | None):
+    try:
+        manifest = resolve_manifest(file if file is not None else project)
+    except AgentPackError as exc:
+        raise _fail(exc) from None
+    return manifest, edit.read_doc(manifest)
+
+
+@skill_app.command("add")
+def skill_add(
+    path: Annotated[str, typer.Argument(help="Skill directory, relative to the manifest.")],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+) -> None:
+    """Register a skill path. Does nothing if it is already covered."""
+    manifest, doc = _open_manifest(project, file)
+
+    covering = edit.covering_entry(doc, "skills", path)
+    if covering:
+        typer.secho(
+            f"Already registered via 'skills: {covering}' — nothing to change.",
+            fg=typer.colors.YELLOW,
+        )
+    else:
+        edit.add_entry(doc, "skills", path)
+        edit.write_doc(manifest, doc)
+        typer.secho(f"Registered skills: {edit.normalize(path)}", fg=typer.colors.GREEN)
+
+    target = manifest.parent / path
+    if not (target / "SKILL.md").is_file():
+        typer.secho(
+            f"Note: {edit.normalize(path)}/SKILL.md does not exist yet.", fg=typer.colors.YELLOW
+        )
+
+
+@skill_app.command("remove")
+def skill_remove(
+    path: Annotated[str, typer.Argument(help="Skill path to unregister.")],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+) -> None:
+    """Unregister a skill path. Files on disk are left alone."""
+    manifest, doc = _open_manifest(project, file)
+    if not edit.remove_entry(doc, "skills", path):
+        typer.secho(f"'{edit.normalize(path)}' is not registered.", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+    edit.write_doc(manifest, doc)
+    typer.secho(f"Unregistered skills: {edit.normalize(path)}", fg=typer.colors.GREEN)
+
+
+TransportOpt = Annotated[
+    str, typer.Option("--transport", "-t", help="stdio, http or sse.")
+]
+CommandOpt = Annotated[str | None, typer.Option("--command", "-c", help="stdio executable.")]
+ArgsOpt = Annotated[
+    list[str] | None, typer.Option("--arg", "-a", help="stdio argument. Repeatable, ordered.")
+]
+UrlOpt = Annotated[str | None, typer.Option("--url", "-u", help="Endpoint URL for http/sse.")]
+EnvOpt = Annotated[
+    list[str] | None,
+    typer.Option("--env", "-e", help="KEY for a user-supplied value, or KEY=VALUE for a literal."),
+]
+SecretOpt = Annotated[
+    list[str] | None, typer.Option("--secret", "-s", help="KEY of a user-supplied secret.")
+]
+HeaderOpt = Annotated[
+    list[str] | None, typer.Option("--header", help="Secret HTTP header name, e.g. Authorization.")
+]
+
+
+@mcp_app.command("add")
+def mcp_add(
+    name: Annotated[str, typer.Argument(help="Server name.")],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    transport: TransportOpt = "stdio",
+    command: CommandOpt = None,
+    arg: ArgsOpt = None,
+    cwd: Annotated[str | None, typer.Option("--cwd")] = None,
+    url: UrlOpt = None,
+    env: EnvOpt = None,
+    secret: SecretOpt = None,
+    header: HeaderOpt = None,
+    description: Annotated[str, typer.Option("--description", "-d")] = "",
+    display_name: Annotated[str | None, typer.Option("--display-name")] = None,
+) -> None:
+    """Create an MCP definition and register it."""
+    manifest, doc = _open_manifest(project, file)
+    mcp_dir = edit.default_dir(doc, "mcp", edit.DEFAULT_MCP_DIR)
+    target = manifest.parent / mcp_dir / f"{name}.yaml"
+
+    if target.exists():
+        typer.secho(
+            f"{mcp_dir}/{name}.yaml already exists. Use 'agentpack mcp update'.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        server = edit.mcp_document(
+            name,
+            transport=transport,
+            description=description,
+            display_name=display_name,
+            command=command,
+            args=list(arg or []),
+            cwd=cwd,
+            url=url,
+            env=list(env or []),
+            secret_env=list(secret or []),
+            headers=list(header or []),
+        )
+    except AgentPackError as exc:
+        raise _fail(exc) from None
+
+    edit.write_doc(target, server)
+    typer.secho(f"Created {mcp_dir}/{name}.yaml", fg=typer.colors.GREEN)
+
+    if edit.covering_entry(doc, "mcp", f"{mcp_dir}/{name}.yaml"):
+        typer.echo(f"Already covered by 'mcp: {mcp_dir}'.")
+    else:
+        edit.add_entry(doc, "mcp", mcp_dir)
+        edit.write_doc(manifest, doc)
+        typer.secho(f"Registered mcp: {mcp_dir}", fg=typer.colors.GREEN)
+
+
+@mcp_app.command("update")
+def mcp_update(
+    name: Annotated[str, typer.Argument(help="Server name.")],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    transport: Annotated[str | None, typer.Option("--transport", "-t")] = None,
+    command: CommandOpt = None,
+    arg: ArgsOpt = None,
+    cwd: Annotated[str | None, typer.Option("--cwd")] = None,
+    url: UrlOpt = None,
+    env: EnvOpt = None,
+    secret: SecretOpt = None,
+    remove_env: Annotated[
+        list[str] | None, typer.Option("--remove-env", help="Environment key to drop.")
+    ] = None,
+    header: HeaderOpt = None,
+    description: Annotated[str, typer.Option("--description", "-d")] = "",
+    display_name: Annotated[str | None, typer.Option("--display-name")] = None,
+) -> None:
+    """Change fields of an existing MCP definition, leaving the rest intact."""
+    manifest, doc = _open_manifest(project, file)
+    target = _find_mcp_file(manifest, doc, name)
+
+    server = edit.read_doc(target)
+    changed = edit.apply_mcp_updates(
+        server,
+        transport=transport,
+        command=command,
+        args=list(arg or []),
+        cwd=cwd,
+        url=url,
+        env=list(env or []),
+        secret_env=list(secret or []),
+        remove_env=list(remove_env or []),
+        headers=list(header or []),
+        description=description,
+        display_name=display_name,
+    )
+    if not changed:
+        typer.secho("No options given — nothing changed.", fg=typer.colors.YELLOW)
+        return
+
+    edit.write_doc(target, server)
+    typer.secho(f"Updated {target.name}: {', '.join(changed)}", fg=typer.colors.GREEN)
+
+
+@mcp_app.command("import")
+def mcp_import_cmd(
+    source: Annotated[Path, typer.Argument(help="JSON file holding one or more MCP servers.")],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    name: Annotated[
+        str | None,
+        typer.Option("--name", "-n", help="Import only this server, or name a bare server object."),
+    ] = None,
+    update: Annotated[
+        bool, typer.Option("--update", "-u", help="Merge into existing definitions.")
+    ] = False,
+) -> None:
+    """Create or update MCP definitions from a client's JSON config."""
+    manifest, doc = _open_manifest(project, file)
+    mcp_dir = edit.default_dir(doc, "mcp", edit.DEFAULT_MCP_DIR)
+
+    try:
+        servers = mcp_import.servers_from_json(mcp_import.load_json(source), name)
+    except AgentPackError as exc:
+        raise _fail(exc) from None
+
+    registered = False
+    for server_name, incoming in servers:
+        target = manifest.parent / mcp_dir / f"{server_name}.yaml"
+
+        if target.exists():
+            if not update:
+                typer.secho(
+                    f"{mcp_dir}/{server_name}.yaml exists — pass --update to merge into it.",
+                    fg=typer.colors.YELLOW,
+                )
+                continue
+            existing = edit.read_doc(target)
+            changed = mcp_import.merge_server(existing, incoming)
+            if not changed:
+                typer.echo(f"{server_name}: already matches the JSON.")
+                continue
+            edit.write_doc(target, existing)
+            typer.secho(
+                f"Updated {mcp_dir}/{server_name}.yaml: {', '.join(changed)}", fg=typer.colors.GREEN
+            )
+        else:
+            edit.write_doc(target, incoming)
+            typer.secho(f"Created {mcp_dir}/{server_name}.yaml", fg=typer.colors.GREEN)
+
+        secrets = [
+            key
+            for section in ("environment", "headers")
+            for key, var in (incoming.get(section) or {}).items()
+            if var.get("secret")
+        ]
+        if secrets:
+            typer.secho(
+                f"  {server_name}: {', '.join(secrets)} declared as user-supplied secrets; "
+                "no values were copied.",
+                fg=typer.colors.CYAN,
+            )
+
+        if not registered and not edit.covering_entry(doc, "mcp", f"{mcp_dir}/{server_name}.yaml"):
+            edit.add_entry(doc, "mcp", mcp_dir)
+            edit.write_doc(manifest, doc)
+            typer.secho(f"Registered mcp: {mcp_dir}", fg=typer.colors.GREEN)
+            registered = True
+
+
+@mcp_app.command("remove")
+def mcp_remove(
+    name: Annotated[str, typer.Argument(help="Server name.")],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    keep_file: Annotated[
+        bool, typer.Option("--keep-file", help="Unregister only; leave the YAML on disk.")
+    ] = False,
+) -> None:
+    """Remove an MCP definition and any manifest entry pointing at it."""
+    manifest, doc = _open_manifest(project, file)
+    target = _find_mcp_file(manifest, doc, name)
+    relative = target.relative_to(manifest.parent).as_posix()
+
+    if not keep_file:
+        target.unlink()
+        typer.secho(f"Deleted {relative}", fg=typer.colors.GREEN)
+
+    if edit.remove_entry(doc, "mcp", relative):
+        edit.write_doc(manifest, doc)
+        typer.secho(f"Unregistered mcp: {relative}", fg=typer.colors.GREEN)
+
+
+def _find_mcp_file(manifest: Path, doc, name: str) -> Path:
+    """Locate <name>.yaml under any directory the manifest lists for MCP."""
+    roots = [edit.entry_path(e) for e in (doc.get("mcp") or [])] or [edit.DEFAULT_MCP_DIR]
+    for root in roots:
+        candidate = manifest.parent / root
+        if candidate.is_file() and candidate.stem == name:
+            return candidate
+        for suffix in (".yaml", ".yml"):
+            hit = candidate / f"{name}{suffix}"
+            if hit.is_file():
+                return hit
+    typer.secho(f"No MCP definition named '{name}' found.", fg=typer.colors.RED)
+    raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
