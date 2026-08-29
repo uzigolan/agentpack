@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentpack import __version__
+from agentpack.adapters.base import TargetAdapter
+from agentpack.core import install_guide
 from agentpack.core.diagnostics import AP2001, AP3001, Diagnostics
-from agentpack.core.fsutil import clean_dir, copy_tree, iter_files, write_json, zip_dir
+from agentpack.core.fsutil import clean_dir, copy_tree, iter_files, write_json, write_text, zip_dir
 from agentpack.core.registry import registry
 from agentpack.core.validator import validate
 from agentpack.models.package import AgentPackage, BuildResult
@@ -20,6 +22,7 @@ class BuildSummary:
     results: list[BuildResult]
     diagnostics: Diagnostics
     manifest_path: Path | None = None
+    install_guide_path: Path | None = None
 
     @property
     def ok(self) -> bool:
@@ -56,6 +59,7 @@ def build(
 
     results: list[BuildResult] = []
     artifacts: list[dict[str, object]] = []
+    built: list[tuple[TargetAdapter, BuildResult]] = []
 
     for name in selected:
         adapter = registry.get(name)
@@ -108,6 +112,10 @@ def build(
 
         artifacts.append(entry)
         results.append(result)
+        built.append((adapter, result))
+
+    guide_path = out_root / "INSTALL.md"
+    write_text(guide_path, install_guide.render(package, built, out_root))
 
     manifest = {
         "agentpackVersion": __version__,
@@ -115,10 +123,16 @@ def build(
         "packageVersion": package.metadata.version,
         "knowledgeMode": package.build.knowledge.value,
         "targets": [r.target for r in results],
+        "installGuide": guide_path.name,
         "artifacts": artifacts,
         "diagnostics": [d.render() for d in diags],
     }
     manifest_path = out_root / "agentpack-build.json"
     write_json(manifest_path, manifest)
 
-    return BuildSummary(results=results, diagnostics=diags, manifest_path=manifest_path)
+    return BuildSummary(
+        results=results,
+        diagnostics=diags,
+        manifest_path=manifest_path,
+        install_guide_path=guide_path,
+    )

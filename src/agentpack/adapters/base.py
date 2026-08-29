@@ -33,6 +33,10 @@ class TargetAdapter(ABC):
     @abstractmethod
     def build(self, package: AgentPackage, output_dir: Path) -> BuildResult: ...
 
+    def install_steps(self, package: AgentPackage) -> list[str]:  # noqa: ARG002
+        """Markdown lines telling a user how to install this target's artifacts."""
+        return []
+
     def validate(self, package: AgentPackage) -> Diagnostics:  # noqa: ARG002
         return Diagnostics()
 
@@ -84,10 +88,26 @@ class TargetAdapter(ABC):
             return var.value
         return f"<{key}>"
 
-    def readme(self, package: AgentPackage, sections: list[str]) -> str:
+    def required_values_table(self, package: AgentPackage) -> list[str]:
+        inputs = self.user_input_rows(package)
+        if not inputs:
+            return ["None."]
+        return [
+            "| Server | Key | Secret | Required | Description |",
+            "|---|---|---|---|---|",
+            *(
+                f"| {srv} | `{key}` | {'yes' if var.secret else 'no'} | "
+                f"{'yes' if var.required else 'no'} | {var.description or ''} |"
+                for srv, key, var in inputs
+            ),
+            "",
+            "Secrets are never embedded in this package. Supply them during or "
+            "after install.",
+        ]
+
+    def readme(self, package: AgentPackage) -> str:
         caps = self.capabilities()
         meta = package.metadata
-        inputs = self.user_input_rows(package)
         lines = [
             f"# {meta.title} — {self.name} package",
             "",
@@ -114,27 +134,11 @@ class TargetAdapter(ABC):
             "import mechanism. Nothing is copied into the client's configuration "
             "directories by hand, and skills are never installed one by one.",
             "",
-            *sections,
+            *self.install_steps(package),
             "",
             "## Required values",
             "",
-        ]
-        if inputs:
-            lines += ["| Server | Key | Secret | Required | Description |", "|---|---|---|---|---|"]
-            lines += [
-                f"| {srv} | `{key}` | {'yes' if var.secret else 'no'} | "
-                f"{'yes' if var.required else 'no'} | {var.description or ''} |"
-                for srv, key, var in inputs
-            ]
-            lines += [
-                "",
-                "Secrets are never embedded in this package. Supply them during or "
-                "after install.",
-            ]
-        else:
-            lines.append("None.")
-
-        lines += [
+            *self.required_values_table(package),
             "",
             "## Verify",
             "",

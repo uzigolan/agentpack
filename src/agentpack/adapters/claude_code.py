@@ -134,12 +134,12 @@ class ClaudeCodeAdapter(TargetAdapter):
             },
         )
 
-        write_text(output_dir / "README.md", self.readme(package, self._install_steps(package)))
+        write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(
             target=self.name, output_dir=output_dir, artifact_type=ArtifactType.PLUGIN
         )
 
-    def _install_steps(self, package: AgentPackage) -> list[str]:
+    def install_steps(self, package: AgentPackage) -> list[str]:
         return [
             "Add this directory as a local marketplace, then install the plugin. "
             "The plugin carries the MCP servers and every skill, so nothing is copied "

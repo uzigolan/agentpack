@@ -54,12 +54,12 @@ class CopilotIntelliJAdapter(CopilotVSCodeAdapter):
         project = output_dir / "project"
         self.stage_skills(package, project / ".github" / "skills")
 
-        write_text(output_dir / "README.md", self.readme(package, self._install_steps()))
+        write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(
             target=self.name, output_dir=output_dir, artifact_type=ArtifactType.CONFIG_EXPORT
         )
 
-    def _install_steps(self) -> list[str]:
+    def install_steps(self, package: AgentPackage) -> list[str]:  # noqa: ARG002
         paths = "\n".join(f"   - {os}: `{p}`" for os, p in USER_CONFIG_PATHS.items())
         return [
             "The JetBrains Copilot plugin has no import container, so this package is "

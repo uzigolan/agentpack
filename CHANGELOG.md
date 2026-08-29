@@ -12,6 +12,10 @@ CLI; see [docs/manifest.md](docs/manifest.md).
 
 ### Added
 
+- `dist/INSTALL.md`, generated on every build: an index of every artifact, which
+  client it belongs to, per-client install steps and the required-value table.
+- `TargetAdapter.install_steps()` and `required_values_table()` are now public,
+  so adapters contribute to both the per-target README and the install guide.
 - `-f` / `--file` on `validate`, `build`, `package`, `inspect`, `clean` and
   `doctor` to use a specific manifest with any filename. Paths inside it resolve
   relative to the manifest's directory.

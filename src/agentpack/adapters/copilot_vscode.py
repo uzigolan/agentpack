@@ -133,12 +133,12 @@ class CopilotVSCodeAdapter(TargetAdapter):
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(agent.source.read_bytes())
 
-        write_text(output_dir / "README.md", self.readme(package, self._install_steps()))
+        write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(
             target=self.name, output_dir=output_dir, artifact_type=ArtifactType.CONFIG_EXPORT
         )
 
-    def _install_steps(self) -> list[str]:
+    def install_steps(self, package: AgentPackage) -> list[str]:  # noqa: ARG002
         paths = "\n".join(f"   - {os}: `{p}`" for os, p in USER_CONFIG_PATHS.items())
         return [
             "VS Code has no plugin container for Copilot capabilities, so this package "

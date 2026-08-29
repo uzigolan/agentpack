@@ -104,12 +104,12 @@ class CodexAdapter(TargetAdapter):
     def build(self, package: AgentPackage, output_dir: Path) -> BuildResult:
         write_text(output_dir / "config.toml", self._config_toml(package))
         self.stage_skills(package, output_dir / "skills")
-        write_text(output_dir / "README.md", self.readme(package, self._install_steps()))
+        write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(
             target=self.name, output_dir=output_dir, artifact_type=ArtifactType.CONFIG_EXPORT
         )
 
-    def _install_steps(self) -> list[str]:
+    def install_steps(self, package: AgentPackage) -> list[str]:  # noqa: ARG002
         return [
             "Codex has no plugin or extension container, so this target is a "
             "configuration export: one archive, applied once.",

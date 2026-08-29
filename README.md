@@ -78,8 +78,9 @@ Paths inside the manifest (`skills:`, `mcp:`, `include:`, `build.output`) always
 resolve relative to **the manifest's own directory**, never to your current
 directory — so `dist/` lands next to the manifest.
 
-Then open `dist/build/<client>/README.md` — it contains the exact install steps
-and the list of values the user must supply for that client.
+Then open `dist/INSTALL.md` — it lists every artifact that was produced, which
+client each one is for, the exact install steps and the values the user must
+supply.
 
 **One `agentpack.yaml` per repo.** Each repo that produces capabilities owns its
 own manifest and builds on its own. Nothing central lists what a repo contains.
@@ -202,6 +203,7 @@ mechanism: an install-time prompt (Claude Desktop, VS Code) or a documented
 
 ```text
 dist/
+├── INSTALL.md                           # start here: every artifact + how to install it
 ├── agentpack-build.json                 # targets, artifact types, sha256 each
 ├── build/                               # unpacked, for inspection and diffing
 │   ├── claude-desktop/mcpb/<server>/    # one bundle per MCP server
@@ -218,6 +220,11 @@ dist/
     ├── netops-skills-copilot-vscode-1.0.0.zip
     └── netops-skills-codex-1.0.0.zip
 ```
+
+`dist/INSTALL.md` is generated on every build and is what you hand to whoever
+installs the package: it names each file, which client it is for, the steps, and
+the values they must supply. Each `dist/build/<client>/README.md` has the same
+detail for one client only.
 
 Every archive is named `<package>-<target>[-<part>]-<version>`, so a file is
 never ambiguous about which client and which version it belongs to.

@@ -168,8 +168,10 @@ def build(
         typer.echo(f"{result.target:<20}{result.artifact_type.value:<24}{len(result.files):>6}")
         for path in result.archives:
             typer.echo(f"{'':<20}{path}")
+    if summary.install_guide_path:
+        typer.secho(f"\nInstall guide:  {summary.install_guide_path}", fg=typer.colors.GREEN)
     if summary.manifest_path:
-        typer.secho(f"\nBuild manifest: {summary.manifest_path}", fg=typer.colors.GREEN)
+        typer.echo(f"Build manifest: {summary.manifest_path}")
 
 
 @app.command(name="package")

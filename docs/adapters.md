@@ -153,10 +153,13 @@ class MyClientAdapter(TargetAdapter):
     def validate(self, package: AgentPackage) -> Diagnostics:
         ...   # target-specific warnings, with stable codes
 
+    def install_steps(self, package: AgentPackage) -> list[str]:
+        ...   # markdown lines, reused by the README and by dist/INSTALL.md
+
     def build(self, package: AgentPackage, output_dir: Path) -> BuildResult:
         self.stage_skills(package, output_dir / "skills")
         write_json(output_dir / "config.json", ...)
-        write_text(output_dir / "README.md", self.readme(package, steps))
+        write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(target=self.name, output_dir=output_dir,
                            artifact_type=ArtifactType.CONFIG_EXPORT)
 ```

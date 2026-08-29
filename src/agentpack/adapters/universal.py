@@ -98,22 +98,19 @@ class UniversalAdapter(TargetAdapter):
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(asset.source.read_bytes())
 
-        write_text(
-            output_dir / "README.md",
-            self.readme(
-                package,
-                [
-                    "This artifact is not installed directly. Use it to re-build a "
-                    "client package:",
-                    "",
-                    "```bash",
-                    "agentpack build --target claude-desktop --target copilot-vscode",
-                    "```",
-                    "",
-                    "`plugin.json` indexes every capability in this directory.",
-                ],
-            ),
-        )
+        write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(
             target=self.name, output_dir=output_dir, artifact_type=ArtifactType.ARCHIVE
         )
+
+    def install_steps(self, package: AgentPackage) -> list[str]:  # noqa: ARG002
+        return [
+            "This artifact is not installed directly. Use it to re-build a "
+            "client package:",
+            "",
+            "```bash",
+            "agentpack build --target claude-desktop --target copilot-vscode",
+            "```",
+            "",
+            "`plugin.json` indexes every capability in this directory.",
+        ]

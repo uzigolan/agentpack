@@ -203,7 +203,7 @@ class ClaudeDesktopAdapter(TargetAdapter):
             self.stage_skills(package, plugin_dir / "skills")
             specs.append(ArchiveSpec(root=f"plugin/{meta.name}", label="skills"))
 
-        write_text(output_dir / "README.md", self.readme(package, self._install_steps(package)))
+        write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(
             target=self.name,
             output_dir=output_dir,
@@ -211,7 +211,7 @@ class ClaudeDesktopAdapter(TargetAdapter):
             archive_specs=specs,
         )
 
-    def _install_steps(self, package: AgentPackage) -> list[str]:
+    def install_steps(self, package: AgentPackage) -> list[str]:
         meta = package.metadata
         bundles = [
             f"   - `{meta.name}-{self.name}-{s.name}-{meta.version}.mcpb`"
@@ -219,8 +219,8 @@ class ClaudeDesktopAdapter(TargetAdapter):
             for s in package.mcp_servers
         ]
         steps = [
-            "Run `agentpack package --target claude-desktop` to produce the installable "
-            "files in `dist/packages/`.",
+            "The installable files are in `dist/packages/` "
+            "(run `agentpack package` if they are missing).",
             "",
             "1. Claude Desktop → **Settings → Extensions → Install from file** → select "
             "each MCP bundle:",
