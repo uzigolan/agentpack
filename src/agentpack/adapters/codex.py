@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from agentpack.adapters.base import TargetAdapter
@@ -25,6 +26,11 @@ def toml_string(value: str) -> str:
 
 def toml_array(values: list[str]) -> str:
     return "[" + ", ".join(toml_string(v) for v in values) + "]"
+
+
+def bearer_token_env_name(server_name: str) -> str:
+    """Return a portable user-environment variable name for a server token."""
+    return f"{re.sub(r'[^A-Za-z0-9_]', '_', server_name).upper()}_TOKEN"
 
 
 class CodexAdapter(TargetAdapter):
@@ -69,9 +75,9 @@ class CodexAdapter(TargetAdapter):
             lines += ["", f"[mcp_servers.{server.name}]"]
             if server.is_remote and server.endpoint:
                 lines.append(f"url = {toml_string(server.endpoint.url)}")
-                if any(var.secret for var in server.headers.values()):
+                if (authorization := server.headers.get("Authorization")) and authorization.secret:
                     lines.append(
-                        f"bearer_token_env_var = {toml_string(f'{server.name.upper()}_TOKEN')}"
+                        f"bearer_token_env_var = {toml_string(bearer_token_env_name(server.name))}"
                     )
             else:
                 assert server.command is not None
@@ -91,6 +97,17 @@ class CodexAdapter(TargetAdapter):
                 lines += ["", f"[mcp_servers.{server.name}.env]"]
                 lines += [f"{k} = {toml_string(v)}" for k, v in sorted(env.items())]
         return "\n".join(lines)
+
+    def _plugin_mcp_entry(self, server):  # noqa: ANN001
+        """Emit Codex's bearer-token reference instead of a secret placeholder."""
+        entry = mcp_server_entry(self, server)
+        authorization = server.headers.get("Authorization")
+        if server.is_remote and authorization and authorization.secret:
+            # Codex reads this value from the user's environment and constructs
+            # the Authorization: Bearer header itself.
+            entry.pop("headers", None)
+            entry["bearer_token_env_var"] = bearer_token_env_name(server.name)
+        return entry
 
     def build(self, package: AgentPackage, output_dir: Path) -> BuildResult:
         meta = package.metadata
@@ -119,7 +136,7 @@ class CodexAdapter(TargetAdapter):
             write_json(
                 plugin_dir / ".mcp.json",
                 {"mcpServers": {
-                    server.name: mcp_server_entry(self, server) for server in package.mcp_servers
+                    server.name: self._plugin_mcp_entry(server) for server in package.mcp_servers
                 }},
             )
         if meta.keywords:
@@ -164,7 +181,7 @@ class CodexAdapter(TargetAdapter):
 
     def install_steps(self, package: AgentPackage) -> list[str]:  # noqa: ARG002
         plugin_name = package.metadata.name.lower().replace("_", "-").replace(".", "-")
-        return [
+        steps = [
             "1. Extract `"
             f"{package.metadata.name}-codex-marketplace-{package.metadata.version}.zip` from "
             "`dist/packages/` into a folder.",
@@ -172,7 +189,28 @@ class CodexAdapter(TargetAdapter):
             "Settings UI.",
             "3. Open **Plugins → Add → + Add a marketplace** and select the extracted folder "
             "(it contains `.agents/plugins/marketplace.json`).",
-            f"4. Find `{plugin_name}` in the Plugins list and choose **Install**.",
-            "The plugin contains its skills and MCP server configuration; start a new thread "
-            "after installation.",
+            "4. Adding a marketplace only makes its plugin available; it does not replace an "
+            "existing plugin or activate the new one.",
+            "5. Install and enable the new plugin with "
+            f"`codex plugin add {plugin_name}@{plugin_name}-marketplace` in PowerShell "
+            "(or choose **Install** for it in the Plugins list).",
+            "6. If an older plugin provides the same MCP server, remove it first with "
+            "`codex plugin remove <old-plugin>@<old-marketplace>` so Codex cannot keep using "
+            "the old server definition.",
         ]
+        for server in package.mcp_servers:
+            authorization = server.headers.get("Authorization")
+            if server.is_remote and authorization and authorization.secret:
+                env_name = bearer_token_env_name(server.name)
+                steps.append(
+                    "7. Set the required token once for your Windows user: "
+                    f"`[Environment]::SetEnvironmentVariable('{env_name}', "
+                    "'<token-without-Bearer>', 'User')`. Close and reopen Codex afterward. "
+                    "The token is never stored in the package."
+                )
+                break
+        steps.append(
+            "The plugin contains its skills and MCP server configuration; start a new thread "
+            "after installation."
+        )
+        return steps

@@ -141,6 +141,17 @@ def test_codex_emits_installable_plugin(package, tmp_path: Path):
     assert marketplace["plugins"][0]["source"]["path"] == "./plugins/network-operations"
 
 
+def test_codex_uses_an_environment_variable_for_remote_bearer_tokens(package, tmp_path: Path):
+    build(package, targets=["codex"], output_dir=tmp_path / "dist")
+    mcp = json.loads(
+        (tmp_path / "dist" / "build" / "codex" / "plugins" / "network-operations" / ".mcp.json")
+        .read_text(encoding="utf-8")
+    )
+    remote = mcp["mcpServers"]["monitoring"]
+    assert remote["bearer_token_env_var"] == "MONITORING_TOKEN"
+    assert "headers" not in remote
+
+
 def test_served_mode_strips_references_and_stamps(package, tmp_path: Path):
     package.build.knowledge = KnowledgeMode.SERVED
     _build(package, tmp_path)

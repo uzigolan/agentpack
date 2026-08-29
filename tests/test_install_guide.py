@@ -44,6 +44,15 @@ def test_install_guide_states_the_no_manual_copy_rule(package, tmp_path: Path):
     assert "skills are never installed one by one" in text
 
 
+def test_codex_install_guide_explains_how_to_replace_an_old_plugin(package, tmp_path: Path):
+    _, text = _guide(package, tmp_path)
+    assert "Adding a marketplace only makes its plugin available" in text
+    assert "codex plugin add network-operations@network-operations-marketplace" in text
+    assert "codex plugin remove <old-plugin>@<old-marketplace>" in text
+    assert "MONITORING_TOKEN" in text
+    assert "<token-without-Bearer>" in text
+
+
 def test_install_guide_lists_required_values_without_secrets(package, tmp_path: Path):
     _, text = _guide(package, tmp_path)
     assert "| netops | `NETOPS_TOKEN` | yes | yes |" in text
