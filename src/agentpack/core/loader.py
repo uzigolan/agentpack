@@ -65,6 +65,16 @@ def manifest_path(project_dir: Path) -> Path:
     raise AgentPackError(AP1001, f"no agentpack.yaml in {project_dir}")
 
 
+def resolve_manifest(source: Path) -> Path:
+    """Accept a manifest file (any name) or a directory searched upwards."""
+    source = source.resolve()
+    if source.is_file():
+        return source
+    if not source.exists():
+        raise AgentPackError(AP1001, f"path not found: {source}")
+    return manifest_path(find_project(source))
+
+
 def _read_yaml(path: Path) -> dict[str, Any]:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -248,7 +258,7 @@ def _load_includes(
             # Sibling checkouts are the normal multi-repo layout; still worth surfacing.
             diags.info(AP1007, f"include '{raw}' resolves outside the project root")
 
-        child = load_package(child_dir, diags, seen)
+        child = load_package(child_manifest, diags, seen)
         diags.info(
             AP1007,
             f"included {child.metadata.name} {child.metadata.version}: "
@@ -259,13 +269,18 @@ def _load_includes(
 
 
 def load_package(
-    project_dir: Path,
+    source: Path,
     diags: Diagnostics | None = None,
     _seen: set[Path] | None = None,
 ) -> AgentPackage:
+    """Load a project from a manifest file, or from a directory containing one.
+
+    Every path inside the manifest is resolved relative to the manifest's own
+    directory, which becomes the project root.
+    """
     diags = diags if diags is not None else Diagnostics()
-    project_dir = project_dir.resolve()
-    manifest = manifest_path(project_dir)
+    manifest = resolve_manifest(source)
+    project_dir = manifest.parent
     seen = _seen if _seen is not None else set()
     seen.add(manifest)
     data = _read_yaml(manifest)

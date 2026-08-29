@@ -56,7 +56,7 @@ Three steps. That's the whole tool.
 cd path\to\my-capabilities-repo
 
 # 1. add one file to the repo that produces your skills and MCP servers
-agentpack init            # writes agentpack.yaml (skip if you write it by hand)
+agentpack init            # optional: scaffolds an example to copy from
 
 # 2. check it
 agentpack validate
@@ -64,6 +64,19 @@ agentpack validate
 # 3. build installable artifacts
 agentpack package
 ```
+
+`agentpack init` only writes a starter example — most people write
+`agentpack.yaml` by hand. Every command also takes `-f` to point at a specific
+manifest, with any filename, from anywhere:
+
+```powershell
+agentpack validate -f D:\repos\netops\netops.agentpack.yaml
+agentpack package  -f D:\repos\netops\netops.agentpack.yaml
+```
+
+Paths inside the manifest (`skills:`, `mcp:`, `include:`, `build.output`) always
+resolve relative to **the manifest's own directory**, never to your current
+directory — so `dist/` lands next to the manifest.
 
 Then open `dist/build/<client>/README.md` — it contains the exact install steps
 and the list of values the user must supply for that client.
@@ -253,11 +266,15 @@ agentpack validate                      # is my project correct?
 agentpack build                         # unpacked directories in dist/build/
 agentpack package                       # + distributable archives in dist/packages/
 agentpack build --target claude-desktop # just one client
+agentpack validate -f path\to\my.yaml   # use a specific manifest, any filename
 agentpack inspect                       # what the adapters actually see
 agentpack list-targets -v               # clients + capability matrix
 agentpack doctor                        # environment + project health
 agentpack clean                         # remove dist/
 ```
+
+Without `-f`, AgentPack searches the current directory and its parents for an
+`agentpack.yaml`. `-p <dir>` starts that search somewhere else.
 
 ---
 

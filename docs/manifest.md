@@ -3,6 +3,19 @@
 One manifest per producing repository. A repo that ships skills and MCP
 definitions owns its own `agentpack.yaml`; nothing else re-lists its contents.
 
+The file may have any name. Commands find it in one of two ways:
+
+```powershell
+agentpack validate                       # search the CWD and its parents
+agentpack validate -p path\to\repo       # search there instead
+agentpack validate -f path\to\my.yaml    # use exactly this file
+```
+
+Every path inside the manifest resolves relative to **the manifest's own
+directory**, which becomes the project root — never relative to your current
+directory. `build.output` follows the same rule, so `dist/` is written next to
+the manifest.
+
 **Contents:** [Example](#example) · [Fields](#fields) · [Skills](#skills) ·
 [Composing repos](#composing-repos) · [Overrides](#target-overrides)
 

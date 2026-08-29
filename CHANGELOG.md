@@ -10,6 +10,19 @@ CLI; see [docs/manifest.md](docs/manifest.md).
 
 ## [Unreleased]
 
+### Added
+
+- `-f` / `--file` on `validate`, `build`, `package`, `inspect`, `clean` and
+  `doctor` to use a specific manifest with any filename. Paths inside it resolve
+  relative to the manifest's directory.
+- `package` now accepts `--strict` and `--knowledge`, matching `build`.
+
+### Changed
+
+- `inspect --format` lost its `-f` short alias, which now means `--file`.
+- Manifest load errors exit cleanly with the diagnostic code instead of a
+  traceback, whichever entry point is used.
+
 ## [0.1.0] - 2026-08-29
 
 First working release.

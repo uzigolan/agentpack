@@ -13,7 +13,7 @@ from agentpack import API_VERSION, __version__
 from agentpack.core import scaffold
 from agentpack.core.builder import build as run_build
 from agentpack.core.diagnostics import AgentPackError, Diagnostics, Severity
-from agentpack.core.loader import find_project, load_package
+from agentpack.core.loader import load_package, resolve_manifest
 from agentpack.core.registry import registry
 from agentpack.core.validator import validate as run_validate
 from agentpack.models.package import KnowledgeMode
@@ -26,6 +26,14 @@ app = typer.Typer(
 
 ProjectOpt = Annotated[
     Path, typer.Option("--project", "-p", help="Project directory (default: search upwards).")
+]
+FileOpt = Annotated[
+    Path | None,
+    typer.Option(
+        "--file",
+        "-f",
+        help="Manifest to use, any filename. Paths inside it resolve relative to it.",
+    ),
 ]
 TargetOpt = Annotated[
     list[str] | None, typer.Option("--target", "-t", help="Target to build. Repeatable.")
@@ -42,10 +50,18 @@ def _echo_diagnostics(diags: Diagnostics) -> None:
         typer.secho(d.render(), fg=colors[d.severity])
 
 
-def _load(project: Path) -> tuple:
+def _fail(exc: AgentPackError) -> typer.Exit:
+    typer.secho(f"ERROR {exc}", fg=typer.colors.RED)
+    return typer.Exit(code=1)
+
+
+def _load(project: Path, file: Path | None = None) -> tuple:
     diags = Diagnostics()
-    root = find_project(project)
-    return load_package(root, diags), diags
+    try:
+        package = load_package(file if file is not None else project, diags)
+    except AgentPackError as exc:
+        raise _fail(exc) from None
+    return package, diags
 
 
 def main() -> None:
@@ -70,9 +86,13 @@ def init(
 
 
 @app.command()
-def validate(project: ProjectOpt = Path("."), target: TargetOpt = None) -> None:
+def validate(
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    target: TargetOpt = None,
+) -> None:
     """Validate the canonical project and its target compatibility."""
-    pkg, diags = _load(project)
+    pkg, diags = _load(project, file)
     diags.extend(run_validate(pkg, list(target) if target else None))
     _echo_diagnostics(diags)
 
@@ -90,10 +110,11 @@ def validate(project: ProjectOpt = Path("."), target: TargetOpt = None) -> None:
 @app.command()
 def inspect(
     project: ProjectOpt = Path("."),
-    format: Annotated[str, typer.Option("--format", "-f", help="yaml or json")] = "yaml",
+    file: FileOpt = None,
+    format: Annotated[str, typer.Option("--format", help="yaml or json")] = "yaml",
 ) -> None:
     """Print the normalized model that adapters receive."""
-    pkg, _ = _load(project)
+    pkg, _ = _load(project, file)
     data = json.loads(pkg.model_dump_json(by_alias=True, exclude_none=True))
     typer.echo(
         json.dumps(data, indent=2)
@@ -105,6 +126,7 @@ def inspect(
 @app.command()
 def build(
     project: ProjectOpt = Path("."),
+    file: FileOpt = None,
     target: TargetOpt = None,
     output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
     strict: Annotated[bool, typer.Option("--strict", help="Fail on any warning.")] = False,
@@ -117,7 +139,7 @@ def build(
     ] = False,
 ) -> None:
     """Build client packages into dist/."""
-    pkg, diags = _load(project)
+    pkg, diags = _load(project, file)
     if diags.has_errors():
         _echo_diagnostics(diags)
         raise typer.Exit(code=1)
@@ -153,11 +175,25 @@ def build(
 @app.command(name="package")
 def package_cmd(
     project: ProjectOpt = Path("."),
+    file: FileOpt = None,
     target: TargetOpt = None,
     output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
+    strict: Annotated[bool, typer.Option("--strict", help="Fail on any warning.")] = False,
+    knowledge: Annotated[
+        KnowledgeMode | None,
+        typer.Option("--knowledge", help="Ship skill references/ or have an MCP serve them."),
+    ] = None,
 ) -> None:
     """Build and emit distributable archives (dist/packages/)."""
-    build(project=project, target=target, output=output, strict=False, knowledge=None, archive=True)
+    build(
+        project=project,
+        file=file,
+        target=target,
+        output=output,
+        strict=strict,
+        knowledge=knowledge,
+        archive=True,
+    )
 
 
 @app.command(name="list-targets")
@@ -180,12 +216,13 @@ def list_targets(
 @app.command()
 def clean(
     project: ProjectOpt = Path("."),
+    file: FileOpt = None,
     output: Annotated[Path | None, typer.Option()] = None,
 ) -> None:
     """Remove the build output directory."""
     import shutil
 
-    pkg, _ = _load(project)
+    pkg, _ = _load(project, file)
     out = output or (pkg.project_dir / pkg.build.output)
     if out.exists():
         shutil.rmtree(out)
@@ -195,7 +232,7 @@ def clean(
 
 
 @app.command()
-def doctor(project: ProjectOpt = Path(".")) -> None:
+def doctor(project: ProjectOpt = Path("."), file: FileOpt = None) -> None:
     """Report environment and project health."""
     import sys
 
@@ -204,14 +241,14 @@ def doctor(project: ProjectOpt = Path(".")) -> None:
     typer.echo(f"python      {sys.version.split()[0]}")
     typer.echo(f"targets     {', '.join(registry.names())}")
     try:
-        root = find_project(project)
-        typer.secho(f"project     {root}", fg=typer.colors.GREEN)
-        pkg, diags = _load(root)
+        manifest = resolve_manifest(file if file is not None else project)
+        typer.secho(f"manifest    {manifest}", fg=typer.colors.GREEN)
+        pkg, diags = _load(project, manifest)
         typer.echo(f"skills      {len(pkg.skills)}")
         typer.echo(f"mcp servers {len(pkg.mcp_servers)}")
         _echo_diagnostics(diags)
     except AgentPackError as exc:
-        typer.secho(f"project     none ({exc})", fg=typer.colors.YELLOW)
+        typer.secho(f"manifest    none ({exc})", fg=typer.colors.YELLOW)
 
 
 @app.command()
