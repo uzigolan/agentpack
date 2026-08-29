@@ -10,12 +10,17 @@ From the repo root:
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\Activate.ps1
 ```
 
 ```bash
 python -m venv .venv
 .venv/bin/python -m pip install -e ".[dev]"
+source .venv/bin/activate
 ```
+
+Activation is what puts `agentpack`, `pytest` and `ruff` on PATH; without it,
+call them by their full path under `.venv\Scripts\`.
 
 ## Checks
 

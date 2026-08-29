@@ -20,15 +20,28 @@ and import through each client's own UI.
 
 ## Setup
 
-Once, from the repo root:
+Once, from this repo's root:
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\Activate.ps1          # puts agentpack on PATH
 ```
 
-That installs the `agentpack` command into the venv. Everything below assumes it
-is on your PATH; otherwise call `.\.venv\Scripts\agentpack.exe`.
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+source .venv/bin/activate
+```
+
+Check it:
+
+```powershell
+agentpack version
+```
+
+Activation lasts for the current shell only. In a new shell, activate again or
+call the executable directly: `C:\path\to\agentpack\.venv\Scripts\agentpack.exe`.
 
 ---
 
@@ -36,7 +49,12 @@ is on your PATH; otherwise call `.\.venv\Scripts\agentpack.exe`.
 
 Three steps. That's the whole tool.
 
+> Run these **in your capability repo** — the one holding your skills and MCP
+> definitions — not inside the AgentPack repo.
+
 ```powershell
+cd path\to\my-capabilities-repo
+
 # 1. add one file to the repo that produces your skills and MCP servers
 agentpack init            # writes agentpack.yaml (skip if you write it by hand)
 
