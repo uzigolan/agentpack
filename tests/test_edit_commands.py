@@ -112,7 +112,38 @@ def test_skill_add_warns_when_the_directory_is_missing(tmp_path: Path):
     manifest = init(tmp_path)
     result = runner.invoke(app, ["skill", "add", "skills/ghost", "-f", str(manifest)])
     assert result.exit_code == 0
-    assert "does not exist yet" in result.output
+    assert "no SKILL.md found" in result.output
+
+
+def test_skill_add_reports_the_skills_it_found(tmp_path: Path):
+    manifest = init(tmp_path)
+    for name in ("alpha", "beta"):
+        make_skill(manifest.parent, name)
+
+    result = runner.invoke(app, ["skill", "add", "skills", "-f", str(manifest)])
+    assert result.exit_code == 0, result.output
+    assert "2 skill(s): alpha, beta" in result.output
+
+
+def test_skill_add_accepts_an_absolute_path_inside_the_project(tmp_path: Path):
+    manifest = init(tmp_path)
+    make_skill(manifest.parent, "alpha")
+
+    absolute = manifest.parent / "skills" / "alpha"
+    result = runner.invoke(app, ["skill", "add", str(absolute), "-f", str(manifest)])
+    assert result.exit_code == 0, result.output
+    assert read(manifest)["skills"] == [{"path": "skills/alpha"}]
+
+
+def test_skill_add_rejects_a_path_outside_the_project(tmp_path: Path):
+    manifest = init(tmp_path)
+    outside = tmp_path / "elsewhere" / "skills"
+    outside.mkdir(parents=True)
+
+    result = runner.invoke(app, ["skill", "add", str(outside), "-f", str(manifest)])
+    assert result.exit_code == 1
+    assert "is outside the project" in result.output
+    assert read(manifest)["skills"] == []
 
 
 def test_skill_remove(tmp_path: Path):

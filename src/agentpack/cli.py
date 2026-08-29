@@ -304,6 +304,25 @@ def _open_manifest(project: Path, file: Path | None):
     return manifest, edit.read_doc(manifest)
 
 
+def _relative_to_manifest(manifest: Path, path: str, key: str) -> str:
+    """Accept an absolute or relative path; store it relative to the manifest."""
+    root = manifest.parent.resolve()
+    candidate = Path(path)
+    resolved = (candidate if candidate.is_absolute() else manifest.parent / candidate).resolve()
+
+    if resolved != root and root not in resolved.parents:
+        typer.secho(
+            f"ERROR: {resolved} is outside the project.\n"
+            f"       Everything under '{key}:' must live at or below {root}, because paths\n"
+            "       resolve relative to the manifest. Either move the manifest to a\n"
+            "       directory above it, or use 'include:' to compose another project.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    return edit.normalize(resolved.relative_to(root).as_posix() or ".")
+
+
 @skill_app.command("add")
 def skill_add(
     path: Annotated[str, typer.Argument(help="Skill directory, relative to the manifest.")],
@@ -312,22 +331,28 @@ def skill_add(
 ) -> None:
     """Register a skill path. Does nothing if it is already covered."""
     manifest, doc = _open_manifest(project, file)
+    relative = _relative_to_manifest(manifest, path, "skills")
 
-    covering = edit.covering_entry(doc, "skills", path)
+    covering = edit.covering_entry(doc, "skills", relative)
     if covering:
         typer.secho(
             f"Already registered via 'skills: {covering}' — nothing to change.",
             fg=typer.colors.YELLOW,
         )
     else:
-        edit.add_entry(doc, "skills", path)
+        edit.add_entry(doc, "skills", relative)
         edit.write_doc(manifest, doc)
-        typer.secho(f"Registered skills: {edit.normalize(path)}", fg=typer.colors.GREEN)
+        typer.secho(f"Registered skills: {relative}", fg=typer.colors.GREEN)
 
-    target = manifest.parent / path
-    if not (target / "SKILL.md").is_file():
+    target = manifest.parent / relative
+    if (target / "SKILL.md").is_file():
+        return
+    found = sorted(p.parent.name for p in target.glob("*/SKILL.md")) if target.is_dir() else []
+    if found:
+        typer.echo(f"{len(found)} skill(s): {', '.join(found)}")
+    else:
         typer.secho(
-            f"Note: {edit.normalize(path)}/SKILL.md does not exist yet.", fg=typer.colors.YELLOW
+            f"Note: no SKILL.md found under {relative} yet.", fg=typer.colors.YELLOW
         )
 
 
