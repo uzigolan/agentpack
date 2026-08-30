@@ -121,23 +121,57 @@ Treat `artifacts/<name>/` and the Copilot/Codex packages as secret material.
 They are ignored by Git by default; do not share them or force-add them to a
 repository.
 
-## Packages created by `agentpack package`
+## Result: `rad-agent-toolkit-http`
 
-Open `artifacts/<name>/dist/INSTALL.md` after every package. It contains the
-exact filenames for the version you built and the install steps. Typical output:
+This is what AgentPack created for the existing
+`rad-agent-toolkit-http` example after running:
 
-```text
-dist/packages/
-  claude-desktop-cowork-plugin-0.25.1.plugin
-  claude-desktop-rad-network-toolkit-http-127.0.0.1-0.25.1.mcpb
-  claude-code-0.25.1.zip
-  copilot-0.25.1.zip
-  codex-marketplace-0.25.1.zip
-  universal-0.25.1.zip
+```powershell
+agentpack package -n rad-agent-toolkit-http
 ```
 
-The MCPB filename says `stdio` for a local stdio server, or `http-<host>` for
-an HTTP server. This makes the transport visible before installation.
+```text
+artifacts/
+  rad-agent-toolkit-http/
+    agentpack.yaml                         # package name, version, targets
+    skills/                                # 11 imported skill folders
+      rad-core/SKILL.md
+      rad-cli-operations/SKILL.md
+      ...
+    mcp/
+      rad-network-toolkit.yaml             # imported HTTP MCP definition
+    dist/                                  # deleted and recreated by package
+      INSTALL.md                           # exact install instructions
+      agentpack-build.json                 # build and SHA256 record
+      build/                               # unpacked output; inspect only
+        claude-desktop/
+        claude-code/
+        copilot/
+        codex/
+        universal/
+      packages/                            # the files to install or distribute
+        claude-desktop-cowork-plugin-0.25.11.plugin
+        claude-desktop-rad-network-toolkit-http-127.0.0.1-0.25.11.mcpb
+        claude-code-0.25.11.zip
+        copilot-0.25.11.zip
+        codex-marketplace-0.25.11.zip
+        universal-0.25.11.zip
+```
+
+The important result is `dist/packages/`:
+
+| File | Use it for |
+|---|---|
+| `claude-desktop-cowork-plugin-<version>.plugin` | All skills in Claude Desktop |
+| `claude-desktop-<mcp-name>-http-<host>-<version>.mcpb` | The HTTP MCP in Claude Desktop |
+| `claude-desktop-<mcp-name>-stdio-<version>.mcpb` | A stdio MCP in Claude Desktop |
+| `claude-code-<version>.zip` | Claude Code marketplace |
+| `copilot-<version>.zip` | Copilot plugin |
+| `codex-marketplace-<version>.zip` | Codex marketplace and plugin |
+| `universal-<version>.zip` | Archive/repackaging, not direct installation |
+
+Open `artifacts/<name>/dist/INSTALL.md` after every package command. It lists
+the exact files made for your package version and installation instructions.
 
 ## Install a package
 
