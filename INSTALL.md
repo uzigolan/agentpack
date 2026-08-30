@@ -6,7 +6,7 @@ with it, read the generated `dist/INSTALL.md` instead.
 **Contents:** [Requirements](#requirements) · [Option 1: pipx](#option-1-pipx-recommended) ·
 [Option 2: virtual environment](#option-2-virtual-environment) ·
 [Option 3: from source](#option-3-from-source-for-contributors) ·
-[Verify](#verify) · [Optional: Node.js](#optional-nodejs) ·
+[Verify](#verify) · [Claude Desktop HTTP bridge](#claude-desktop-http-bridge) ·
 [Upgrade](#upgrade) · [Uninstall](#uninstall) · [Troubleshooting](#troubleshooting)
 
 ---
@@ -122,14 +122,12 @@ That writes `examples/network-operations/dist/`, including `INSTALL.md` and
 
 ---
 
-## Optional: Node.js
+## Claude Desktop HTTP bridge
 
-AgentPack itself never needs Node.js. It is only required **on the machine that
-installs** a Claude Desktop bundle for an **HTTP** MCP server, because Claude
-Desktop can only launch local processes and the bundle bridges through
-`npx -y mcp-remote <url>`.
-
-Not needed for stdio MCP servers, or for any other client.
+AgentPack embeds a Windows HTTP bridge in each generated HTTP MCPB. On first
+extension launch it installs under `%LOCALAPPDATA%\AgentPack\bridge` and then
+connects using the endpoint and secret headers entered in Claude Desktop. No
+Node.js, Python, or producer checkout is required by the installing user.
 
 ---
 

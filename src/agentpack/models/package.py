@@ -105,7 +105,7 @@ SERVED_STAMP = "<!--agentpack-mode:served-->"
 # --------------------------------------------------------------------------
 class EnvVarSource(str, Enum):
     USER = "user"  # prompted / filled in by the installing user
-    LITERAL = "literal"  # non-secret constant baked into the artifact
+    LITERAL = "literal"  # constant, optionally a target-scoped stored secret
 
 
 class EnvVar(StrictModel):
@@ -117,14 +117,6 @@ class EnvVar(StrictModel):
     type: Literal["string", "file", "directory", "number", "boolean"] = "string"
     default: str | None = None
     title: str | None = None
-
-    @field_validator("value")
-    @classmethod
-    def _no_literal_secret(cls, v: str | None, info):  # noqa: ANN001
-        if v and info.data.get("secret"):
-            raise ValueError("secret values must never be embedded in the manifest")
-        return v
-
 
 class TransportType(str, Enum):
     STDIO = "stdio"

@@ -29,10 +29,10 @@ Import an HTTP definition in exactly the same way:
 agentpack mcp import "C:\source\mcps\http.json" -n my-agent
 ```
 
-When the HTTP JSON is part of a producer `packing/` directory and that
-directory contains `mcpb/*.mcpb`, AgentPack imports the producer-built MCPB
-automatically. It uses that MCPB unchanged for Claude Desktop. A stdio-only
-MCP receives AgentPack's direct-launch MCPB instead.
+For an HTTP MCP, import only its JSON definition. AgentPack generates the
+Claude Desktop MCPB and Windows bridge automatically. The bridge installs on
+first use under `%LOCALAPPDATA%\AgentPack\bridge`; a producer repository does
+not provide an MCPB or a local runtime.
 
 ## 3. Package
 
@@ -57,8 +57,8 @@ lists the exact generated filenames and installation instructions.
 
 | Client | Install the generated package |
 |---|---|
-| Claude Desktop | Upload the `.plugin` in **Settings → Manage plugins → Add → Upload plugin**. Install each `.mcpb` in **Settings → Extensions → Install extension**. For HTTP MCPs, use the producer-built `.mcpb`; it contains the stdio-to-HTTP bridge. |
+| Claude Desktop | Upload the `.plugin` in **Settings → Manage plugins → Add → Upload plugin**. Install each `.mcpb` in **Settings → Extensions → Install extension**. For HTTP MCPs, enter the endpoint and requested token/header values; AgentPack installs its bridge under `%LOCALAPPDATA%\AgentPack\bridge` automatically. |
 | Claude Code | Add the extracted package as a local marketplace, then install its plugin. |
-| GitHub Copilot | Extract the Copilot ZIP. Open Copilot **Settings → Plugins → + Install Plugin from Source**, then choose the extracted folder. The plugin contains its MCP configuration and skills. |
+| GitHub Copilot | Extract the Copilot ZIP. Open Copilot **Settings → Plugins → + Install Plugin from Source**, then choose the extracted folder and click **Install** on its row. Run **Developer: Reload Window** from `Ctrl+Shift+P`; the plugin then loads its skills and MCP configuration. |
 | Codex | Extract the Codex marketplace ZIP. Open Codex **Settings → Codex Settings → Plugins → Add → + Add a marketplace**, then install the listed plugin. Adding a marketplace alone does not switch plugins. Use `codex plugin add <plugin>@<marketplace>`; if an old plugin provides the same MCP, first run `codex plugin remove <old-plugin>@<old-marketplace>`. For a bearer-token HTTP MCP, set the Windows user environment variable named in generated `INSTALL.md`, then reopen Codex and start a new chat. |
 | Universal | Keep as an interchange/archive package; clients do not install it directly. |

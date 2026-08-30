@@ -8,8 +8,10 @@ Recognised shapes:
 - a bare server object, e.g. ``{"command": "npx", "args": [...]}``
 
 A value the user must supply is never turned into a literal: placeholders such
-as ``${input:x}``, ``${user_config.x}`` and ``<KEY>`` become
-``source: user``, and anything that looks like a credential is marked secret.
+as ``${input:x}``, ``${user_config.x}`` and ``<KEY>`` become ``source: user``.
+An actual credential in an HTTP header is retained as a secret literal so the
+Copilot and Codex package adapters can embed it; the Claude adapter still
+prompts the installer and never includes that value in its MCPB.
 """
 
 from __future__ import annotations
@@ -46,7 +48,9 @@ def looks_secret(key: str) -> bool:
     return any(hint in lowered for hint in SECRET_HINTS)
 
 
-def _declare(key: str, value: Any, hints: dict[str, dict]) -> dict:
+def _declare(
+    key: str, value: Any, hints: dict[str, dict], *, preserve_header_secret: bool = False
+) -> dict:
     """One environment or header entry, as a canonical declaration."""
     text = value if isinstance(value, str) else json.dumps(value)
 
@@ -70,8 +74,21 @@ def _declare(key: str, value: Any, hints: dict[str, dict]) -> dict:
             declaration["default"] = hint["default"]
         return declaration
 
+    if looks_secret(key) and preserve_header_secret:
+        # This is intentionally limited to HTTP headers. It lets self-contained
+        # plugin targets preserve an imported Authorization token, while command
+        # environments remain prompt-only and never inherit a producer secret.
+        return {
+            "source": "literal",
+            "value": text,
+            "required": True,
+            "secret": True,
+            "description": f"Value for {key}.",
+        }
+
     if looks_secret(key):
-        # A real credential was sitting in the source file; never carry it over.
+        # A real command-environment credential was sitting in the source
+        # file; never carry it over.
         return {
             "source": "user",
             "required": True,
@@ -113,7 +130,10 @@ def _server_document(name: str, entry: dict, hints: dict[str, dict]) -> dict:
             doc["command"]["cwd"] = entry["cwd"]
     else:
         doc["endpoint"] = {"url": url}
-        headers = {k: _declare(k, v, hints) for k, v in (entry.get("headers") or {}).items()}
+        headers = {
+            k: _declare(k, v, hints, preserve_header_secret=True)
+            for k, v in (entry.get("headers") or {}).items()
+        }
         if entry.get("bearer_token_env_var") and not headers:
             headers["Authorization"] = _declare("Authorization", "<TOKEN>", hints)
         if headers:

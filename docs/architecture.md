@@ -63,7 +63,8 @@ AgentPack treats the source repository as untrusted:
 - symlinks are refused rather than followed;
 - every source path is checked to stay inside the project root (`AP1006`);
 - output is only ever written inside the configured output directory;
-- secret values are rejected at load time if a manifest tries to inline them;
+- secret command-environment values are never inherited from an import; an imported
+  HTTP-header secret is target-scoped to Copilot and Codex, while Claude still prompts;
 - the local environment is never read for secret material.
 
 ## Extending

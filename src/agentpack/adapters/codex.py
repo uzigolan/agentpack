@@ -76,9 +76,12 @@ class CodexAdapter(TargetAdapter):
             if server.is_remote and server.endpoint:
                 lines.append(f"url = {toml_string(server.endpoint.url)}")
                 if (authorization := server.headers.get("Authorization")) and authorization.secret:
-                    lines.append(
-                        f"bearer_token_env_var = {toml_string(bearer_token_env_name(server.name))}"
-                    )
+                    if authorization.source.value == "literal" and authorization.value:
+                        lines += ["", f"[mcp_servers.{server.name}.http_headers]"]
+                        lines.append(f"Authorization = {toml_string(authorization.value)}")
+                    else:
+                        env_name = bearer_token_env_name(server.name)
+                        lines.append(f"bearer_token_env_var = {toml_string(env_name)}")
             else:
                 assert server.command is not None
                 lines.append('type = "local"')
@@ -100,8 +103,25 @@ class CodexAdapter(TargetAdapter):
 
     def _plugin_mcp_entry(self, server):  # noqa: ANN001
         """Emit Codex's bearer-token reference instead of a secret placeholder."""
-        entry = mcp_server_entry(self, server)
         authorization = server.headers.get("Authorization")
+        embedded_bearer_token = self._embedded_bearer_token
+        if server.is_remote and server.endpoint and authorization and embedded_bearer_token:
+            entry = mcp_server_entry(self, server)
+            entry.setdefault("headers", {})["Authorization"] = f"Bearer {embedded_bearer_token}"
+            return entry
+
+        entry = mcp_server_entry(self, server)
+        if (
+            server.is_remote
+            and authorization
+            and authorization.source.value == "literal"
+            and authorization.value
+        ):
+            # A literal secret only reaches this target through an imported
+            # HTTP header. Codex receives the exact header value, including
+            # its scheme, so it has no install-time token prompt.
+            entry.setdefault("headers", {})["Authorization"] = authorization.value
+            return entry
         if server.is_remote and authorization and authorization.secret:
             # Codex reads this value from the user's environment and constructs
             # the Authorization: Bearer header itself.
@@ -109,7 +129,10 @@ class CodexAdapter(TargetAdapter):
             entry["bearer_token_env_var"] = bearer_token_env_name(server.name)
         return entry
 
+    _embedded_bearer_token: str | None = None
+
     def build(self, package: AgentPackage, output_dir: Path) -> BuildResult:
+        self._embedded_bearer_token = package.options_for(self.name).get("_embedded_bearer_token")
         meta = package.metadata
         # Codex requires the plugin root directory and manifest name to match.
         plugin_name = meta.name.lower().replace("_", "-").replace(".", "-")
@@ -183,7 +206,7 @@ class CodexAdapter(TargetAdapter):
         plugin_name = package.metadata.name.lower().replace("_", "-").replace(".", "-")
         steps = [
             "1. Extract `"
-            f"{package.metadata.name}-codex-marketplace-{package.metadata.version}.zip` from "
+            f"codex-marketplace-{package.metadata.version}.zip` from "
             "`dist/packages/` into a folder.",
             "2. Click Codex's **Settings** gear, then choose **Codex Settings** to open the "
             "Settings UI.",
@@ -200,7 +223,13 @@ class CodexAdapter(TargetAdapter):
         ]
         for server in package.mcp_servers:
             authorization = server.headers.get("Authorization")
-            if server.is_remote and authorization and authorization.secret:
+            if (
+                server.is_remote
+                and authorization
+                and authorization.secret
+                and authorization.source.value != "literal"
+                and not package.options_for(self.name).get("_embedded_bearer_token")
+            ):
                 env_name = bearer_token_env_name(server.name)
                 steps.append(
                     "7. Set the required token once for your Windows user: "
@@ -209,6 +238,17 @@ class CodexAdapter(TargetAdapter):
                     "The token is never stored in the package."
                 )
                 break
+        if package.options_for(self.name).get("_embedded_bearer_token") or any(
+            server.is_remote
+            and (authorization := server.headers.get("Authorization"))
+            and authorization.source.value == "literal"
+            and authorization.secret
+            for server in package.mcp_servers
+        ):
+            steps.append(
+                "The bearer token is embedded in this Codex package. Treat its ZIP and extracted "
+                "folder as secret material and do not share them."
+            )
         steps.append(
             "The plugin contains its skills and MCP server configuration; start a new thread "
             "after installation."

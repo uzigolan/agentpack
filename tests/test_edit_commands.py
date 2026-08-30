@@ -215,7 +215,7 @@ def test_name_selects_the_artifacts_workspace_for_everyday_commands(tmp_path: Pa
     assert imported.exit_code == 0, imported.output
     assert built.exit_code == 0, built.output
     assert (tmp_path / "artifacts" / "demo" / "skills" / "alpha" / "SKILL.md").is_file()
-    package = tmp_path / "artifacts" / "demo" / "dist" / "packages" / "demo-universal-0.1.0.zip"
+    package = tmp_path / "artifacts" / "demo" / "dist" / "packages" / "universal-0.1.0.zip"
     assert package.is_file()
 
 
@@ -370,7 +370,7 @@ def test_edited_project_builds(tmp_path: Path):
 
     result = runner.invoke(app, ["package", "-f", str(manifest), "-t", "universal"])
     assert result.exit_code == 0, result.output
-    assert (manifest.parent / "dist" / "packages" / "demo-universal-0.1.0.zip").is_file()
+    assert (manifest.parent / "dist" / "packages" / "universal-0.1.0.zip").is_file()
 
 
 # --------------------------------------------------------------------------
@@ -458,6 +458,34 @@ def test_import_vscode_style_json_uses_input_metadata(tmp_path: Path):
         "description": "Value for NETOPS_INVENTORY.",
     }
     assert env["NETOPS_READONLY"] == {"source": "literal", "value": "true"}
+
+
+def test_import_preserves_a_real_secret_http_header_for_plugin_targets(tmp_path: Path):
+    manifest = init(tmp_path)
+    source = write_json(
+        tmp_path / "remote.json",
+        {
+            "mcpServers": {
+                "monitoring": {
+                    "type": "http",
+                    "url": "https://mcp.example.com/mcp",
+                    "headers": {"Authorization": "Bearer imported-test-token"},
+                }
+            }
+        },
+    )
+
+    result = runner.invoke(app, ["mcp", "import", str(source), "-f", str(manifest)])
+    assert result.exit_code == 0, result.output
+
+    authorization = read(manifest.parent / "mcp" / "monitoring.yaml")["headers"]["Authorization"]
+    assert authorization == {
+        "source": "literal",
+        "value": "Bearer imported-test-token",
+        "required": True,
+        "secret": True,
+        "description": "Value for Authorization.",
+    }
 
 
 def test_import_mcpb_manifest(tmp_path: Path):

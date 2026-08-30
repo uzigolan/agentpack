@@ -86,7 +86,7 @@ def test_package_writes_dist_next_to_the_manifest(tmp_path: Path, monkeypatch):
 
     result = runner.invoke(app, ["package", "-f", str(manifest)])
     assert result.exit_code == 0, result.output
-    assert (tmp_path / "proj" / "dist" / "packages" / "custom-universal-3.2.1.zip").is_file()
+    assert (tmp_path / "proj" / "dist" / "packages" / "universal-3.2.1.zip").is_file()
     assert not (tmp_path / "dist").exists()
 
 

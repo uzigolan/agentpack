@@ -70,7 +70,7 @@ headers:
     source: user
     required: true
     secret: true
-    description: Bearer token for the monitoring MCP endpoint.
+    description: Token for the monitoring MCP endpoint. Claude Desktop adds `Bearer ` automatically.
 ```
 
 ## Environment and headers
@@ -78,8 +78,8 @@ headers:
 | Key | Meaning |
 |---|---|
 | `source: user` | The installing user supplies it. Never baked in. |
-| `source: literal` | Non-secret constant, written into the generated config. |
-| `secret: true` | Loading fails (`AP1003`) if a `value` is also present. |
+| `source: literal` | Constant written into the generated config. An imported secret **HTTP header** may also be a literal; it is embedded only in Copilot and Codex packages. |
+| `secret: true` | Marks a value as sensitive. Claude Desktop always prompts for it; Copilot and Codex embed a literal imported HTTP header. |
 | `type` | Hint used by targets that can render a typed picker (MCPB `user_config`). |
 | `default` | Only emitted for non-secret values. |
 
@@ -149,7 +149,7 @@ the JSON does not mention are left alone.
 ## How adapters map it
 | Target | stdio | http | user value |
 |---|---|---|---|
-| `claude-desktop` | `server.mcp_config.command/args/env` | `npx -y mcp-remote <url>` + `--header` | `user_config` prompt, `${user_config.key}` |
+| `claude-desktop` | `server.mcp_config.command/args/env` | bundled Windows stdio-to-HTTP bridge | `user_config` prompt, `${user_config.key}` |
 | `claude-code` | `mcpServers.<n>` | `mcpServers.<n>.url` | `<KEY>` placeholder |
 | `copilot-vscode` | `servers.<n>` | `servers.<n>` type `http` | `inputs[]` + `${input:id}` |
 | `copilot-intellij` | same as VS Code | same | same |

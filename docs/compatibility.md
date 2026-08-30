@@ -12,7 +12,7 @@ Generated live by `agentpack list-targets -v`. Snapshot:
 
 | Target | skills | stdio | http | user-config | prompts | agents | commands | hooks |
 |---|---|---|---|---|---|---|---|---|
-| claude-desktop | ✅ | ✅ | ⚠ mcp-remote | ✅ | ⚠ | ❌ | ❌ | ❌ |
+| claude-desktop | ✅ | ✅ | ✅ Windows bridge | ✅ | ⚠ | ❌ | ❌ | ❌ |
 | claude-code | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | copilot-vscode | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠ | ⚠ | ❌ |
 | copilot-intellij | ✅ | ✅ | ✅ | ✅ | ⚠ | ❌ | ❌ | ❌ |

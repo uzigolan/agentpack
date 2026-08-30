@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from agentpack import API_VERSION, __version__
 from agentpack.adapters.base import TargetAdapter
 from agentpack.core.fsutil import write_json, write_text
@@ -81,10 +83,43 @@ class UniversalAdapter(TargetAdapter):
         self.stage_skills(package, output_dir / "skills")
 
         for server in package.mcp_servers:
-            if server.source_file and server.source_file.is_file():
-                dest = output_dir / "mcp" / f"{server.name}.yaml"
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_bytes(server.source_file.read_bytes())
+            # The universal artifact is useful for re-packaging, but it is not
+            # one of the two explicit secret-carrying targets. Re-render its
+            # definition so an imported literal header secret becomes a
+            # normal user prompt rather than copying producer credentials.
+            document = {
+                "apiVersion": API_VERSION,
+                "kind": "MCPServer",
+                "metadata": {
+                    "name": server.name,
+                    **({"displayName": server.display_name} if server.display_name else {}),
+                    **({"description": server.description} if server.description else {}),
+                },
+                "transport": {"type": server.transport.value},
+                "capabilities": server.capabilities.model_dump(mode="json"),
+            }
+            if server.command:
+                document["command"] = server.command.model_dump(exclude_none=True)
+            if server.endpoint:
+                document["endpoint"] = server.endpoint.model_dump()
+            for section, values in (
+                ("headers", server.headers),
+                ("environment", server.environment),
+            ):
+                if not values:
+                    continue
+                rendered = {}
+                for key, value in values.items():
+                    item = value.model_dump(mode="json", exclude_none=True)
+                    if value.secret and value.source.value == "literal":
+                        item.pop("value", None)
+                        item["source"] = "user"
+                    rendered[key] = item
+                document[section] = rendered
+            write_text(
+                output_dir / "mcp" / f"{server.name}.yaml",
+                yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+            )
 
         for assets, folder in (
             (package.prompts, "prompts"),

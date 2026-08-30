@@ -99,7 +99,9 @@ def build(
 
         if archive:
             packages_dir = out_root / "packages"
-            stem = f"{package.metadata.name}-{name}"
+            # Archives are target-first so an artifact/project name does not leak
+            # into a client-facing filename.
+            stem = name
             version = package.metadata.version
             if result.archive_specs:
                 for spec in result.archive_specs:

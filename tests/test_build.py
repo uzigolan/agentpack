@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from agentpack.core.builder import build
-from agentpack.models.package import BuildOptions, KnowledgeMode
+from agentpack.models.package import BuildOptions, EnvVarSource, KnowledgeMode
 
 ALL_TARGETS = [
     "universal",
@@ -51,7 +51,14 @@ def test_copilot_plugin_has_a_manifest_and_mcp_config(package, tmp_path: Path):
     assert "netops-netops-token" in ids
     assert config["servers"]["netops"]["env"]["NETOPS_TOKEN"] == "${input:netops-netops-token}"
     assert config["servers"]["netops"]["env"]["NETOPS_READONLY"] == "true"
+    assert (
+        config["servers"]["monitoring"]["headers"]["Authorization"]
+        == "Bearer ${input:monitoring-authorization}"
+    )
     assert all(i["password"] is not None for i in config["inputs"])
+    root_plugin = json.loads((tmp_path / "dist" / "build" / "copilot" / "plugin.json").read_text())
+    assert root_plugin["mcpServers"] == ".mcp.json"
+    assert root_plugin["skills"] == ["skills/"]
     plugin = tmp_path / "dist" / "build" / "copilot" / ".copilot-plugin" / "plugin.json"
     assert json.loads(plugin.read_text(encoding="utf-8"))["name"] == "network-operations"
     assert (plugin.parents[1] / ".claude-plugin" / "plugin.json").is_file()
@@ -65,6 +72,50 @@ def test_no_secret_value_leaks_into_any_artifact(package, tmp_path: Path):
     for path in (tmp_path / "dist").rglob("*"):
         if path.is_file() and path.suffix in {".json", ".toml", ".md", ".yaml"}:
             assert "supersecret" not in path.read_text(encoding="utf-8", errors="ignore")
+
+
+def test_copilot_can_embed_a_runtime_bearer_token(package, tmp_path: Path):
+    package.target_options["copilot"] = {"_embedded_bearer_token": "pack-time-token"}
+    _build(package, tmp_path)
+    config = json.loads((tmp_path / "dist" / "build" / "copilot" / "mcp.json").read_text())
+    assert config["servers"]["monitoring"]["headers"]["Authorization"] == "Bearer pack-time-token"
+    assert "monitoring-authorization" not in {item["id"] for item in config["inputs"]}
+
+
+def test_imported_http_token_is_embedded_only_for_copilot_and_codex(package, tmp_path: Path):
+    token = "Bearer imported-test-token"
+    authorization = package.mcp_servers[0].headers["Authorization"]
+    authorization.source = EnvVarSource.LITERAL
+    authorization.value = token
+
+    _build(package, tmp_path)
+
+    copilot = json.loads((tmp_path / "dist" / "build" / "copilot" / ".mcp.json").read_text())
+    assert copilot["mcpServers"]["monitoring"]["headers"]["Authorization"] == token
+    assert "monitoring-authorization" not in {
+        item["id"] for item in copilot.get("inputs", [])
+    }
+
+    codex = json.loads(
+        (tmp_path / "dist" / "build" / "codex" / "plugins" / "network-operations" / ".mcp.json")
+        .read_text()
+    )
+    assert codex["mcpServers"]["monitoring"]["headers"]["Authorization"] == token
+    assert "bearer_token_env_var" not in codex["mcpServers"]["monitoring"]
+
+    claude = json.loads(
+        (tmp_path / "dist" / "build" / "claude-desktop" / "mcpb" / "monitoring" / "manifest.json")
+        .read_text()
+    )
+    assert token not in json.dumps(claude)
+    assert "Authorization: Bearer ${user_config.authorization}" in claude["server"]["mcp_config"][
+        "args"
+    ]
+
+    for target in ("claude-code", "universal"):
+        for path in (tmp_path / "dist" / "build" / target).rglob("*"):
+            if path.is_file() and path.suffix in {".json", ".yaml", ".md"}:
+                assert token not in path.read_text(encoding="utf-8", errors="ignore")
 
 
 def test_claude_desktop_manifest_shape(package, tmp_path: Path):
@@ -94,7 +145,7 @@ def test_claude_desktop_ships_skills_as_one_plugin(package, tmp_path: Path):
     assert not (tmp_path / "dist" / "build" / "claude-desktop" / "skills").exists()
 
 
-def test_claude_desktop_bridges_remote_server_with_mcp_remote(package, tmp_path: Path):
+def test_claude_desktop_bundles_windows_http_bridge(package, tmp_path: Path):
     _build(package, tmp_path)
     manifest = json.loads(
         (
@@ -102,12 +153,19 @@ def test_claude_desktop_bridges_remote_server_with_mcp_remote(package, tmp_path:
         ).read_text(encoding="utf-8")
     )
     config = manifest["server"]["mcp_config"]
-    assert manifest["server"]["type"] == "node"
-    assert config["command"] == "npx"
-    assert config["args"][:3] == ["-y", "mcp-remote", "https://mcp.example.com/mcp"]
+    assert manifest["server"]["type"] == "binary"
+    assert config["command"] == "${__dirname}/server/agentpack-http-bridge-setup.exe"
+    assert config["args"][:2] == ["--url", "https://mcp.example.com/mcp"]
     assert "--header" in config["args"]
-    assert "Authorization: ${user_config.authorization}" in config["args"]
+    assert "Authorization: Bearer ${user_config.authorization}" in config["args"]
     assert manifest["user_config"]["authorization"]["sensitive"] is True
+    assert manifest["user_config"]["authorization"]["title"] == "Bearer token"
+    manifest_path = (
+        tmp_path / "dist" / "build" / "claude-desktop" / "mcpb" / "monitoring"
+        / "server" / "agentpack-http-bridge-setup.exe"
+    )
+    assert manifest_path.is_file()
+    assert manifest_path.stat().st_size > 0
 
 
 def test_claude_code_uses_mcpservers_key(package, tmp_path: Path):
@@ -150,6 +208,20 @@ def test_codex_uses_an_environment_variable_for_remote_bearer_tokens(package, tm
     remote = mcp["mcpServers"]["monitoring"]
     assert remote["bearer_token_env_var"] == "MONITORING_TOKEN"
     assert "headers" not in remote
+
+
+def test_codex_can_embed_a_runtime_bearer_token(package, tmp_path: Path):
+    package.target_options["codex"] = {"_embedded_bearer_token": "pack-time-token"}
+    build(package, targets=["codex"], output_dir=tmp_path / "dist")
+    mcp = json.loads(
+        (tmp_path / "dist" / "build" / "codex" / "plugins" / "network-operations" / ".mcp.json")
+        .read_text(encoding="utf-8")
+    )
+    remote = mcp["mcpServers"]["monitoring"]
+    assert remote["headers"]["Authorization"] == "Bearer pack-time-token"
+    assert remote["url"] == "https://mcp.example.com/mcp"
+    assert remote["type"] == "http"
+    assert "bearer_token_env_var" not in remote
 
 
 def test_served_mode_strips_references_and_stamps(package, tmp_path: Path):
@@ -207,7 +279,7 @@ def test_every_archive_names_package_target_and_version(package, tmp_path: Path)
     for result in summary.results:
         assert result.archives, f"{result.target} produced no archive"
         for path in result.archives:
-            assert path.name.startswith(f"network-operations-{result.target}-")
+            assert path.name.startswith(f"{result.target}-")
             assert path.stem.endswith("0.1.0")
 
 
@@ -215,9 +287,9 @@ def test_claude_desktop_archives_are_split_per_server_plus_skills(package, tmp_p
     summary = _build(package, tmp_path, archive=True)
     claude = next(r for r in summary.results if r.target == "claude-desktop")
     assert sorted(p.name for p in claude.archives) == [
-        "network-operations-claude-desktop-cowork-plugin-0.1.0.plugin",
-        "network-operations-claude-desktop-monitoring-0.1.0.mcpb",
-        "network-operations-claude-desktop-netops-0.1.0.mcpb",
+        "claude-desktop-cowork-plugin-0.1.0.plugin",
+        "claude-desktop-monitoring-http-mcp.example.com-0.1.0.mcpb",
+        "claude-desktop-netops-stdio-0.1.0.mcpb",
     ]
 
 
@@ -232,7 +304,7 @@ def test_packaging_clears_archives_from_the_previous_run(package, tmp_path: Path
     assert summary.ok
     assert not stale.exists()
     assert [path.name for path in (output / "packages").iterdir()] == [
-        "network-operations-universal-0.1.0.zip"
+        "universal-0.1.0.zip"
     ]
 
 

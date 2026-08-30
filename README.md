@@ -135,10 +135,17 @@ agentpack mcp import mcp.json --overwrite                     # replace existing
 Recognised shapes: `mcpServers`, `servers` (with `inputs`), an MCPB
 `manifest.json`, or a bare server object (needs `--name`).
 
-**Secrets are never carried over.** A `${input:x}` / `${user_config.x}` /
+**Placeholders are never carried over as values.** A `${input:x}` / `${user_config.x}` /
 `<KEY>` placeholder becomes `source: user`, using the client's own metadata for
-the description and whether it is a password. A real credential sitting in the
-JSON is also converted to `source: user, secret: true` — the value is dropped.
+the description and whether it is a password.
+
+An actual secret in an imported **HTTP header** is retained in the artifact's
+MCP definition. `agentpack package` embeds it by default in the Copilot and
+Codex packages, so their users are not prompted. Claude Desktop deliberately
+does not receive it: its MCPB still prompts the installer for the token.
+Treat the artifact project, Copilot ZIP, and Codex ZIP as secret material; do
+not commit or share them. `--embed-token` remains available when the definition
+does not already contain the token.
 
 Then open `dist/INSTALL.md` — it lists every artifact that was produced, which
 client each one is for, the exact install steps and the values the user must
@@ -276,16 +283,16 @@ dist/                                    # or whatever you set as the output fol
 │   ├── claude-desktop/mcpb/<server>/    # one bundle per MCP server
 │   ├── claude-desktop/cowork-plugin/<pkg>/ # all skills as one Cowork plugin
 │   ├── claude-code/<pkg>/               # plugin dir + .mcp.json + skills/
-│   ├── copilot/.copilot-plugin/          # host-neutral Copilot plugin manifest
+│   ├── copilot/plugin.json + .mcp.json    # Copilot plugin manifest + MCPs
 │   ├── codex/config.toml + skills/
 │   └── universal/                       # loss-free archive
 └── packages/                            # what you actually distribute
-    ├── netops-skills-claude-desktop-netops-1.0.0.mcpb
-    ├── netops-skills-claude-desktop-monitoring-1.0.0.mcpb
-    ├── netops-skills-claude-desktop-cowork-plugin-1.0.0.plugin
-    ├── netops-skills-claude-code-1.0.0.zip
-    ├── netops-skills-copilot-1.0.0.zip
-    └── netops-skills-codex-1.0.0.zip
+    ├── claude-desktop-netops-stdio-1.0.0.mcpb
+    ├── claude-desktop-monitoring-http-mcp.example.com-1.0.0.mcpb
+    ├── claude-desktop-cowork-plugin-1.0.0.plugin
+    ├── claude-code-1.0.0.zip
+    ├── copilot-1.0.0.zip
+    └── codex-marketplace-1.0.0.zip
 ```
 
 `dist/INSTALL.md` is generated on every build and is what you hand to whoever
@@ -293,8 +300,9 @@ installs the package: it names each file, which client it is for, the steps, and
 the values they must supply. Each `dist/build/<client>/README.md` has the same
 detail for one client only.
 
-Every archive is named `<package>-<target>[-<part>]-<version>`, so a file is
-never ambiguous about which client and which version it belongs to.
+Every archive is named `<target>[-<part>]-<version>`. Claude Desktop MCPBs add
+their transport and HTTP hostname, for example
+`claude-desktop-netops-http-mcp.example.com-1.0.0.mcpb`.
 
 Per client — all of these are package installs, nothing is copied by hand:
 
@@ -302,13 +310,13 @@ Per client — all of these are package installs, nothing is copied by hand:
 |---|---|
 | Claude Desktop | Settings → Extensions → **Install from file** → each `.mcpb`, then the `.plugin` Cowork skills package |
 | Claude Code | `/plugin marketplace add <dist/build/claude-code>` then `/plugin install <name>` — servers and skills arrive together |
-| GitHub Copilot | Use the Copilot plugin-management UI in VS Code or IntelliJ to add the package folder or ZIP |
+| GitHub Copilot | Extract the package, add its folder through the Copilot plugin UI, click **Install**, then run **Developer: Reload Window** from `Ctrl+Shift+P` |
 | Codex | no plugin container: append `config.toml`, extract `skills/` as one unit |
 
-**HTTP MCP + Claude Desktop** is handled for you: Claude Desktop can only launch
-local processes, so AgentPack wires the bundle through `npx -y mcp-remote <url>`
-and turns your declared headers into install-time prompts. The user needs
-Node.js; nothing else.
+**HTTP MCP + Claude Desktop** is handled for you: AgentPack embeds a Windows
+stdio-to-HTTP bridge in the MCPB. On first use it installs under
+`%LOCALAPPDATA%\AgentPack\bridge`; the user supplies only the endpoint and
+secret headers during Claude Desktop extension installation.
 
 ---
 

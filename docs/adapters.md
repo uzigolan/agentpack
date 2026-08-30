@@ -49,11 +49,13 @@ dist/build/claude-desktop/
 └── README.md
 
 dist/packages/
-├── <pkg>-claude-desktop-<server>-<version>.mcpb
-└── <pkg>-claude-desktop-cowork-plugin-<version>.plugin
+├── claude-desktop-<server>-stdio-<version>.mcpb
+├── claude-desktop-<server>-http-<hostname>-<version>.mcpb
+└── claude-desktop-cowork-plugin-<version>.plugin
 ```
 
-All of them install through **Settings → Extensions → Install from file**.
+Install MCPBs through **Settings → Extensions → Install from file**. Upload the
+skills `.plugin` through **Settings → Manage plugins → Add → Upload plugin**.
 
 Key facts encoded in the adapter:
 
@@ -68,10 +70,10 @@ Key facts encoded in the adapter:
   `~/.claude/skills/`.
 - Absolute paths in `user_config.default` are machine-specific. Do not assume a
   bundle built on one machine works on another without re-pointing them.
-- Remote (`http`/`sse`) servers are bridged with `npx -y mcp-remote <url>`, with
-  each declared header appended as `--header "Name: ${user_config.x}"`. Claude
-  Desktop can only launch local processes, so this is the only way an HTTP MCP
-  server reaches it. The installing machine needs Node.js.
+- On Windows, remote (`http`/`sse`) servers use AgentPack's bundled stdio-to-HTTP
+  bridge. On first use it installs under `%LOCALAPPDATA%\AgentPack\bridge\`.
+  The MCPB prompts for its endpoint and declared headers; it needs neither
+  Node.js nor the producer repository.
 
 ## claude-code
 
@@ -110,6 +112,21 @@ dist/build/copilot-vscode/
 - User-level config paths (only if you want the servers everywhere):
   `%APPDATA%\Code\User\mcp.json`,
   `~/Library/Application Support/Code/User/mcp.json`, `~/.config/Code/User/mcp.json`.
+
+## copilot
+
+The installable Copilot package uses Copilot's plugin layout:
+
+```text
+dist/build/copilot/
+├── plugin.json                    # declares `.mcp.json` and `skills/`
+├── skills/<name>/SKILL.md
+└── .mcp.json                       # root key: mcpServers; supports secure inputs
+```
+
+The manifest explicitly links `.mcp.json`, so VS Code discovers both skills and
+MCPs when the plugin is enabled. A secret `Authorization` input asks for the
+token only; the generated configuration adds `Bearer ` to the HTTP header.
 
 ## copilot-intellij
 

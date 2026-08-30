@@ -100,7 +100,7 @@ class TargetAdapter(ABC):
     def placeholder(self, key: str, var: EnvVar) -> str:
         """Value written when the target cannot prompt the user.
 
-        Never a real secret: AgentPack does not read the local environment.
+        Never a real secret: generic adapters do not receive stored secrets.
         """
         if var.default and not var.secret:
             return var.default
@@ -176,5 +176,5 @@ class TargetAdapter(ABC):
         return {
             k: v.value or ""
             for k, v in server.environment.items()
-            if v.source.value == "literal" and v.value is not None
+            if v.source.value == "literal" and not v.secret and v.value is not None
         }

@@ -42,6 +42,7 @@ def build_mcp_json(adapter: TargetAdapter, package: AgentPackage) -> dict:
     """Shared by the VS Code and IntelliJ Copilot adapters."""
     inputs: list[dict] = []
     servers: dict[str, dict] = {}
+    embedded_bearer_token = package.options_for("copilot").get("_embedded_bearer_token")
 
     for server in package.mcp_servers:
         entry: dict
@@ -49,7 +50,19 @@ def build_mcp_json(adapter: TargetAdapter, package: AgentPackage) -> dict:
             entry = {"type": "http", "url": server.endpoint.url}
             headers = {}
             for key, var in sorted(server.headers.items()):
-                headers[key] = _value_ref(server, key, var, inputs)
+                if var.source.value == "literal" and var.value is not None:
+                    # Imported secret HTTP headers are deliberately embedded
+                    # in Copilot packages. They are never turned into an input.
+                    value = var.value
+                elif key.lower() == "authorization" and var.source.value == "user" and var.secret:
+                    value = (
+                        f"Bearer {embedded_bearer_token}"
+                        if embedded_bearer_token
+                        else f"Bearer {_value_ref(server, key, var, inputs)}"
+                    )
+                else:
+                    value = _value_ref(server, key, var, inputs)
+                headers[key] = value
             if headers:
                 entry["headers"] = headers
         else:
@@ -80,10 +93,16 @@ def build_mcp_json(adapter: TargetAdapter, package: AgentPackage) -> dict:
 def _value_ref(server: MCPServer, key: str, var: EnvVar, inputs: list[dict]) -> str:
     ident = input_id(server.name, key)
     if not any(i["id"] == ident for i in inputs):
+        is_bearer_token = key.lower() == "authorization" and var.secret
         entry = {
             "type": "promptString",
             "id": ident,
-            "description": var.description or f"{server.name}: {key}",
+            "description": var.description
+            or (
+                f"{server.name}: token only; Copilot adds `Bearer ` automatically."
+                if is_bearer_token
+                else f"{server.name}: {key}"
+            ),
             "password": var.secret,
         }
         if var.default and not var.secret:
@@ -196,12 +215,16 @@ class CopilotPluginAdapter(CopilotVSCodeAdapter):
         write_json(output_dir / "mcp.json", config)
         manifest = {
             "name": package.metadata.name,
-            "displayName": package.metadata.title,
             "version": package.metadata.version,
             "description": package.metadata.description,
             "author": {"name": package.metadata.author_name},
             "keywords": package.metadata.keywords,
+            # Copilot's native plugin format permits secure `inputs` in its
+            # `.mcp.json`, unlike portable Agent Plugins 1.0 mcp.json.
+            "mcpServers": ".mcp.json",
+            "skills": ["skills/"],
         }
+        write_json(output_dir / "plugin.json", manifest)
         # Copilot's local-plugin picker recognises the Claude-compatible
         # manifest location. Keep its native marker too for client-version
         # compatibility.
@@ -225,10 +248,12 @@ class CopilotPluginAdapter(CopilotVSCodeAdapter):
     def install_steps(self, package: AgentPackage) -> list[str]:
         return [
             "1. Extract `"
-            f"{package.metadata.name}-copilot-{package.metadata.version}.zip` from "
+            f"copilot-{package.metadata.version}.zip` from "
             "`dist/packages/` into a folder.",
             "2. Click Copilot's **Settings** gear. It opens Copilot's plugin settings.",
             "3. Open **Plugins → + Install Plugin from Source**, then paste or select the "
             "extracted package folder.",
-            "4. Restart the Copilot session and verify its tools and skills.",
+            "4. In the added plugin row, click **Install** to activate it.",
+            "5. Run **Developer: Reload Window** from the VS Code Command Palette "
+            "(`Ctrl+Shift+P`), then start a new Copilot session and verify its tools and skills.",
         ]
