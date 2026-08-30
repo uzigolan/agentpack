@@ -4,409 +4,235 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
-Author AI agent capabilities **once** — Agent Skills and MCP servers — then build
-packages for Claude Desktop, Claude Code, Copilot and Codex.
+Package Agent Skills and MCP servers once, then install the resulting packages
+in Claude Desktop, GitHub Copilot, or Codex.
 
-AgentPack never writes into `~/.claude`, `~/.codex` or your VS Code profile, and
-skills are never installed one by one. It produces packages you version, publish
-and import through each client's own UI.
-
-**Contents:** [Setup](#setup) · [How to work](#how-to-work) · [Editing the manifest](#editing-the-manifest) ·
-[Your repo layout](#your-repo-layout) ·
-[Writing a skill](#writing-a-skill) · [Writing an MCP definition](#writing-an-mcp-definition) ·
-[What you get](#what-you-get) · [Combining repos](#combining-repos) ·
-[Everyday commands](#everyday-commands) · [Options](#options) · [Docs](#docs)
-
-Full install instructions: [INSTALL.md](INSTALL.md)
-
-For the short command workflow, see [Quick start](docs/quickstart.md).
-
----
-
-## Setup
-
-The quickest install — isolated, and on your PATH permanently:
-
-```powershell
-pipx install git+https://github.com/uzigolan/agentpack.git
-agentpack version
-```
-
-Prefer a virtual environment, or working from a clone? See
-[INSTALL.md](INSTALL.md) for all three options, plus verification and
-troubleshooting.
-
----
+AgentPack keeps each package project in `artifacts/<name>/`. Skills, MCP
+definitions, builds, and distributable packages stay there. Nothing is written
+into a client's configuration folders.
 
 ## How to work
 
-Three steps. That's the whole tool.
-
-> Run these **in your capability repo** — the one holding your skills and MCP
-> definitions — not inside the AgentPack repo.
+Run these five commands from the repository root where you want the
+`artifacts/` folder to live:
 
 ```powershell
-cd path\to\my-capabilities-repo
+# 1. init
+agentpack init -n rad-agent-toolkit --version 0.25.1
 
-# 1. create a self-contained package workspace
-#    -> artifacts/netops-skills/ (manifest, imported inputs, and dist/ output)
-agentpack init -n netops-skills --version 1.0.0
+# 2. skills import
+agentpack skill import "C:\source-repo\dist\packing\skills" -n rad-agent-toolkit
 
-# 2. import what you ship into that workspace
-agentpack skill import C:\source-repo\skills -n netops-skills
-agentpack mcp add netops -n netops-skills --command python --arg -m --arg netops_mcp.server --secret NETOPS_TOKEN
+# 3. MCPs import
+agentpack mcp import "C:\source-repo\dist\packing\mcps\http.json" -n rad-agent-toolkit
 
-# 3. check and build
-agentpack validate -n netops-skills
-agentpack package -n netops-skills
+# 4. validate
+agentpack validate -n rad-agent-toolkit
+
+# 5. pack
+agentpack package -n rad-agent-toolkit
 ```
 
-Without a directory argument, `init` creates `artifacts/<package-name>/` and puts
-only `agentpack.yaml`, `.gitignore` and `README.md` there. It does not invent
-`skills/` or `mcp/` directories — `skill import` creates the local skills copy,
-and `--example` creates a working sample.
-
-Afterwards, pass `-n <package-name>` to the working commands (`skill`, `mcp`,
-`validate`, `build`, `package`, `inspect`, `clean`, or `doctor`). It resolves
-`artifacts/<package-name>/agentpack.yaml` automatically; use `-f` only for a
-manifest outside the standard workspace.
-
-Set the package version later with:
-
-```powershell
-agentpack version set 1.1.0 -n netops-skills
-```
-
-All generated artifacts go into one folder, `dist/` by default. Choose another
-at init time, and it is written into the manifest and `.gitignore`:
-
-```powershell
-agentpack init -n netops-skills -o artifacts
-```
-
-Every command also takes `-f` to point at a specific manifest, with any
-filename, from anywhere:
-
-```powershell
-agentpack validate -f D:\repos\netops\netops.agentpack.yaml
-agentpack package  -f D:\repos\netops\netops.agentpack.yaml
-```
-
-Paths inside the manifest (`skills:`, `mcp:`, `include:`, `build.output`) always
-resolve relative to **the manifest's own directory**, never to your current
-directory — so the artifact folder lands next to the manifest.
-
----
-
-## Editing the manifest
-
-You can write `agentpack.yaml` by hand, or let AgentPack maintain it. Edits are
-round-tripped, so your comments and formatting survive.
-
-```powershell
-# skills - registering the same path twice is a no-op
-agentpack skill add skills/network-analysis
-agentpack skill remove skills/network-analysis     # unregisters; files stay
-
-# MCP servers
-agentpack mcp add netops --command python --arg -m --arg netops_mcp.server ‹
-                        --secret NETOPS_TOKEN --env NETOPS_READONLY=true
-agentpack mcp add monitoring -t http -u https://mcp.example.com/mcp --header Authorization
-agentpack mcp update netops -d "Read-only device access" --remove-env NETOPS_READONLY
-agentpack mcp remove monitoring
-```
-
-`skill add` already covered by a parent entry (`skills:`) reports it and changes
-nothing. `mcp add` creates `mcp/<name>.yaml` and registers the directory once.
-
-### Importing MCP servers from JSON
-
-Already have the server configured in a client? Import it instead of retyping:
-
-```powershell
-agentpack mcp import "$env:APPDATA\Code\User\mcp.json"        # VS Code Copilot
-agentpack mcp import claude_desktop_config.json               # Claude
-agentpack mcp import manifest.json                            # an MCPB bundle
-agentpack mcp import mcp.json --server netops                 # just one server
-agentpack mcp import mcp.json --update                        # merge into existing
-agentpack mcp import mcp.json --overwrite                     # replace existing definitions
-```
-
-Recognised shapes: `mcpServers`, `servers` (with `inputs`), an MCPB
-`manifest.json`, or a bare server object (needs `--name`).
-
-**Placeholders are never carried over as values.** A `${input:x}` / `${user_config.x}` /
-`<KEY>` placeholder becomes `source: user`, using the client's own metadata for
-the description and whether it is a password.
-
-An actual secret in an imported **HTTP header** is retained in the artifact's
-MCP definition. `agentpack package` embeds it by default in the Copilot and
-Codex packages, so their users are not prompted. Claude Desktop deliberately
-does not receive it: its MCPB still prompts the installer for the token.
-Treat the artifact project, Copilot ZIP, and Codex ZIP as secret material; do
-not commit or share them. `--embed-token` remains available when the definition
-does not already contain the token.
-
-Then open `dist/INSTALL.md` — it lists every artifact that was produced, which
-client each one is for, the exact install steps and the values the user must
-supply.
-
-**One `agentpack.yaml` per repo.** Each repo that produces capabilities owns its
-own manifest and builds on its own. Nothing central lists what a repo contains.
-
----
-
-## Your repo layout
-
-You almost certainly already have this. Add only `agentpack.yaml`:
+Use the same `-n rad-agent-toolkit` with every command. It resolves:
 
 ```text
-my-capabilities-repo/
-├── agentpack.yaml          ← the one file AgentPack needs
-├── skills/
-│   ├── network-analysis/
-│   │   ├── SKILL.md
-│   │   └── references/     ← optional; skills without it work the same
-│   └── incident-report/
-│       └── SKILL.md
-├── mcp/
-│   ├── netops.yaml         ← stdio server
-│   └── monitoring.yaml     ← http server
-└── dist/                   ← generated; every artifact lands here
+artifacts/
+  rad-agent-toolkit/
+    agentpack.yaml
+    skills/
+    mcp/
+    dist/
 ```
 
-Minimal `agentpack.yaml`:
+Change the version later without recreating the project:
 
-```yaml
-apiVersion: agentpack.dev/v1alpha1
-kind: AgentPackage
-
-metadata:
-  name: netops-skills
-  version: 1.0.0
-  description: Network operations skills and MCP servers.
-
-targets: [claude-desktop, claude-code, copilot, codex, universal]
-
-skills:
-  - path: skills/     # every nested SKILL.md folder and every .zip skill is picked up
-mcp:
-  - path: mcp/        # every *.yaml is picked up
+```powershell
+agentpack version set 0.25.2 -n rad-agent-toolkit
 ```
 
-Point `skills:` / `mcp:` at whatever folders you already use — a directory of
-many, or a single skill directory / single file. A registered skills directory
-may mix ordinary skill folders and `.zip` files. Each ZIP may contain one skill
-or a whole skills collection; AgentPack finds every `SKILL.md` and emits the
-same unpacked `<skill-name>/SKILL.md` layout, with `references/` included only
-in `bundled` knowledge mode.
+`package` clears the previous `dist/` output before creating the new build, so
+the package directory always reflects the current skills and MCP definitions.
 
----
+## What to import
 
-## Writing a skill
+### Skills
 
-A directory with a `SKILL.md`. Three frontmatter rules:
-
-```markdown
----
-name: network-analysis      # must equal the directory name
-description: >-             # required; clients use it to decide when to load
-  Analyse device interface, alarm and health output.
-version: 1.0.0              # optional, MAJOR.MINOR.PATCH
----
-
-# Network Analysis
-
-Steps the agent should follow…
-```
-
-Everything else in the directory (`references/`, `scripts/`, assets) is copied
-verbatim. AgentPack never rewrites your content.
-
----
-
-## Writing an MCP definition
-
-One YAML file per server. Write it once in AgentPack's neutral form; each client
-gets its own dialect.
-
-**stdio:**
-
-```yaml
-apiVersion: agentpack.dev/v1alpha1
-kind: MCPServer
-metadata:
-  name: netops
-transport:
-  type: stdio
-command:
-  executable: python
-  args: ["-m", "netops_mcp.server"]
-environment:
-  NETOPS_TOKEN:
-    source: user        # the installing user supplies it
-    required: true
-    secret: true        # never embedded in any artifact
-```
-
-**http:**
-
-```yaml
-apiVersion: agentpack.dev/v1alpha1
-kind: MCPServer
-metadata:
-  name: monitoring
-transport:
-  type: http
-endpoint:
-  url: https://mcp.example.com/mcp
-headers:
-  Authorization:
-    source: user
-    required: true
-    secret: true
-```
-
-Secrets are declared, never stored. Each client gets the closest native
-mechanism: an install-time prompt (Claude Desktop, VS Code) or a documented
-`<KEY>` placeholder (Claude Code, Codex).
-
----
-
-## What you get
+Import either a folder containing many skill folders, a single skill folder, or
+a ZIP. Each skill needs a `SKILL.md`; `references/` is optional.
 
 ```text
-dist/                                    # or whatever you set as the output folder
-├── INSTALL.md                           # start here: every artifact + how to install it
-├── agentpack-build.json                 # targets, artifact types, sha256 each
-├── build/                               # unpacked, for inspection and diffing
-│   ├── claude-desktop/mcpb/<server>/    # one bundle per MCP server
-│   ├── claude-desktop/cowork-plugin/<pkg>/ # all skills as one Cowork plugin
-│   ├── claude-code/<pkg>/               # plugin dir + .mcp.json + skills/
-│   ├── copilot/plugin.json + .mcp.json    # Copilot plugin manifest + MCPs
-│   ├── codex/config.toml + skills/
-│   └── universal/                       # loss-free archive
-└── packages/                            # what you actually distribute
-    ├── claude-desktop-netops-stdio-1.0.0.mcpb
-    ├── claude-desktop-monitoring-http-mcp.example.com-1.0.0.mcpb
-    ├── claude-desktop-cowork-plugin-1.0.0.plugin
-    ├── claude-code-1.0.0.zip
-    ├── copilot-1.0.0.zip
-    └── codex-marketplace-1.0.0.zip
+skills/
+  network-analysis/
+    SKILL.md
+    references/            # optional
+  incident-report/
+    SKILL.md
 ```
 
-`dist/INSTALL.md` is generated on every build and is what you hand to whoever
-installs the package: it names each file, which client it is for, the steps, and
-the values they must supply. Each `dist/build/<client>/README.md` has the same
-detail for one client only.
+All imported skills are copied into `artifacts/<name>/skills/`. AgentPack never
+uses the source skill directory as package output.
 
-Every archive is named `<target>[-<part>]-<version>`. Claude Desktop MCPBs add
-their transport and HTTP hostname, for example
-`claude-desktop-netops-http-mcp.example.com-1.0.0.mcpb`.
+### MCP servers
 
-Per client — all of these are package installs, nothing is copied by hand:
-
-| Client | How it is installed |
-|---|---|
-| Claude Desktop | Settings → Extensions → **Install from file** → each `.mcpb`, then the `.plugin` Cowork skills package |
-| Claude Code | `/plugin marketplace add <dist/build/claude-code>` then `/plugin install <name>` — servers and skills arrive together |
-| GitHub Copilot | Extract the package, add its folder through the Copilot plugin UI, click **Install**, then run **Developer: Reload Window** from `Ctrl+Shift+P` |
-| Codex | no plugin container: append `config.toml`, extract `skills/` as one unit |
-
-**HTTP MCP + Claude Desktop** is handled for you: AgentPack embeds a Windows
-stdio-to-HTTP bridge in the MCPB. On first use it installs under
-`%LOCALAPPDATA%\AgentPack\bridge`; the user supplies only the endpoint and
-secret headers during Claude Desktop extension installation.
-
----
-
-## Combining repos
-
-Only if you want a combined catalog. It references each repo's own manifest —
-it never re-lists their contents:
-
-```yaml
-# catalog/agentpack.yaml
-metadata: { name: catalog, version: 2.0.0 }
-targets: [claude-desktop, copilot]
-
-include:
-  - path: ../repo-a                    # a directory containing agentpack.yaml
-  - path: ../repo-b/agentpack.yaml     # or the manifest itself
-```
-
-Duplicate skill or server names across repos fail the build (`AP1004`), which is
-what you want when merging catalogs.
-
----
-
-## Everyday commands
+Import a normal MCP JSON file rather than writing another format by hand:
 
 ```powershell
-agentpack init -n NAME [-o FOLDER]      # manifest only; --example adds a sample
-agentpack skill add PATH                # register a skill path (idempotent)
-agentpack mcp add NAME ...              # create and register an MCP definition
-agentpack mcp import FILE.json          # import from a client's JSON config
-agentpack validate                      # is my project correct?
-agentpack build                         # unpacked directories in <output>/build/
-agentpack package                       # + distributable archives in <output>/packages/
-agentpack build --target claude-desktop # just one client
-agentpack build -o somewhere-else       # override the artifact folder for one run
-agentpack validate -f path\to\my.yaml   # use a specific manifest, any filename
-agentpack inspect                       # what the adapters actually see
-agentpack list-targets -v               # clients + capability matrix
-agentpack doctor                        # environment + project health
-agentpack clean                         # remove the artifact folder
+# HTTP or stdio are detected from the JSON content, not its filename.
+agentpack mcp import "C:\source-repo\dist\packing\mcps\http.json" -n rad-agent-toolkit
+
+# Replace an already imported server when its source definition changed.
+agentpack mcp import "C:\source-repo\dist\packing\mcps\http.json" -n rad-agent-toolkit --overwrite
 ```
 
-Without `-f`, AgentPack searches the current directory and its parents for an
-`agentpack.yaml`. `-p <dir>` starts that search somewhere else.
+An MCP JSON may contain `mcpServers`, `servers`, or one bare server entry. A
+`command` makes it a stdio MCP; a `url` makes it an HTTP MCP.
 
----
+If importing would replace files under `artifacts/<name>/mcp/` or `skills/`,
+AgentPack asks before overwriting. Use `--overwrite` only when replacing those
+imported definitions is intended.
 
-## Options
+## HTTP tokens
 
-**Skill knowledge** — where a skill's `references/` corpus lives:
+For an HTTP MCP such as:
 
-```powershell
-agentpack build                        # served (default)
-agentpack build --knowledge bundled    # ships inside the skill; works offline
+```json
+{
+  "mcpServers": {
+    "rad-network-toolkit": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer your-token"
+      }
+    }
+  }
+}
 ```
 
-In `served` mode `references/` is stripped from the artifact and an MCP server
-is expected to provide it at runtime, which keeps skill packages small and the
-corpus centrally updatable. Served artifacts get a `<!--agentpack-mode:served-->`
-stamp so a runtime check can tell which mode is installed. Use `bundled` when
-the skill must work with no MCP connection.
+AgentPack keeps the actual header value in the artifact MCP definition.
 
-**Strict builds** — any warning fails the build:
+- Copilot and Codex packages embed that header automatically. Their users are
+  not prompted for it.
+- Claude Desktop does not embed it. Its MCPB asks the installer for the token;
+  the user enters the token only and AgentPack adds `Bearer `.
+- Claude Code and the universal archive do not receive the stored value.
 
-```powershell
-agentpack build --strict
-```
+Treat `artifacts/<name>/` and the Copilot/Codex packages as secret material.
+They are ignored by Git by default; do not share them or force-add them to a
+repository.
 
-**Diagnostics** — stable codes so CI and agents can key off them:
+## Packages created by `agentpack package`
+
+Open `artifacts/<name>/dist/INSTALL.md` after every package. It contains the
+exact filenames for the version you built and the install steps. Typical output:
 
 ```text
-WARNING AP2201 [codex]: 'monitoring': remote transport requires the experimental RMCP client
+dist/packages/
+  claude-desktop-cowork-plugin-0.25.1.plugin
+  claude-desktop-rad-network-toolkit-http-127.0.0.1-0.25.1.mcpb
+  claude-code-0.25.1.zip
+  copilot-0.25.1.zip
+  codex-marketplace-0.25.1.zip
+  universal-0.25.1.zip
 ```
 
----
+The MCPB filename says `stdio` for a local stdio server, or `http-<host>` for
+an HTTP server. This makes the transport visible before installation.
 
-## Docs
+## Install a package
 
-- [docs/manifest.md](docs/manifest.md) — every `agentpack.yaml` field
-- [docs/mcp-schema.md](docs/mcp-schema.md) — MCP definition + how each client maps it
-- [docs/adapters.md](docs/adapters.md) — per-client artifact details
-- [docs/compatibility.md](docs/compatibility.md) — capability matrix + cross-client gotchas
-- [docs/architecture.md](docs/architecture.md) — pipeline, determinism, security
-- [examples/network-operations](examples/network-operations) — a complete package
-- [AGENTPACK_BASELINE.md](AGENTPACK_BASELINE.md) — original design baseline
+### Claude Desktop
 
-## Project
+1. For skills: **Settings -> Manage plugins -> Add -> Upload plugin**. Select
+   the `.plugin` file.
+2. For every MCP: **Settings -> Extensions -> Install extension**. Select its
+   `.mcpb` file.
+3. For HTTP MCPBs, Claude prompts for the token. Enter only the token, without
+   `Bearer `.
+4. Fully quit Claude Desktop, including the tray process, then reopen it.
 
-- [INSTALL.md](INSTALL.md) — install, verify, upgrade, troubleshoot
-- [CONTRIBUTING.md](CONTRIBUTING.md) — setup, checks, adding an adapter, project rules
-- [SECURITY.md](SECURITY.md) — threat model and reporting
-- [CHANGELOG.md](CHANGELOG.md)
-- Licensed under [Apache-2.0](LICENSE)
+For an HTTP MCP, the MCPB includes AgentPack's Windows stdio-to-HTTP bridge.
+On first use it installs under:
+
+```text
+C:\Users\<user>\AppData\Local\AgentPack\bridge\
+```
+
+No Python, Node.js, source checkout, or separate producer-provided MCPB is
+needed on the installing machine.
+
+### GitHub Copilot
+
+1. Extract `copilot-<version>.zip`.
+2. Open Copilot **Settings -> Plugins -> + Install Plugin from Source**.
+3. Select the extracted folder, then click **Install** on the added plugin.
+4. In VS Code, run **Developer: Reload Window** from `Ctrl+Shift+P`.
+5. Start a new Copilot session. The skills and MCP tools load with the plugin.
+
+### Codex
+
+1. Extract `codex-marketplace-<version>.zip`.
+2. Open **Settings -> Codex Settings -> Plugins -> Add -> + Add a marketplace**.
+3. Select the extracted folder. It contains `.agents/plugins/marketplace.json`.
+4. Install/enable the listed plugin in the Plugins screen.
+5. Start a new Codex session.
+
+If an older plugin provides the same MCP server name, remove it first. Codex
+otherwise keeps the earlier server definition and may appear to use the wrong
+transport or token.
+
+### Claude Code and Universal
+
+`claude-code-<version>.zip` is a Claude Code local marketplace package. The
+universal ZIP is an archive/repackaging format; it is not installed directly by
+a client.
+
+## Useful commands
+
+```powershell
+agentpack init -n NAME --version X.Y.Z
+agentpack version set X.Y.Z -n NAME
+agentpack skill import PATH -n NAME
+agentpack mcp import FILE.json -n NAME
+agentpack validate -n NAME
+agentpack package -n NAME
+agentpack package -n NAME -t copilot       # build just one target
+agentpack package -n NAME -t codex
+agentpack clean -n NAME                    # removes only artifacts/NAME/dist
+agentpack list-targets -v
+agentpack doctor -n NAME
+```
+
+Use `--knowledge bundled` when a skill's `references/` directory must travel
+inside packages. `served` (the default) ships `SKILL.md` and expects a connected
+MCP server to provide larger reference material at runtime.
+
+## Project layout
+
+Each artifact project is self-contained:
+
+```text
+artifacts/<name>/
+  agentpack.yaml
+  skills/
+    <skill-name>/
+      SKILL.md
+      references/          # optional
+  mcp/
+    <server-name>.yaml
+  dist/                    # generated and replaced on every package run
+```
+
+`agentpack.yaml` is the only required top-level definition. The imported
+skills and MCP YAML files are its local, package-owned inputs.
+
+## More documentation
+
+- [INSTALL.md](INSTALL.md): install the `agentpack` command itself
+- [docs/quickstart.md](docs/quickstart.md): concise command reference
+- [docs/mcp-schema.md](docs/mcp-schema.md): MCP YAML schema
+- [docs/adapters.md](docs/adapters.md): target-specific behavior
+- [docs/manifest.md](docs/manifest.md): every `agentpack.yaml` field
+- [examples/network-operations](examples/network-operations): sample package
+
+Licensed under [Apache-2.0](LICENSE).
