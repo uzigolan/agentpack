@@ -26,7 +26,12 @@ from agentpack.models.package import (
 )
 
 
-def mcp_server_entry(adapter: TargetAdapter, server: MCPServer) -> dict:
+def mcp_server_entry(
+    adapter: TargetAdapter,
+    server: MCPServer,
+    package: AgentPackage | None = None,
+    package_root: str = "${CLAUDE_PLUGIN_ROOT}",
+) -> dict:
     """`mcpServers` value in Claude's JSON dialect."""
     env = adapter.mcp_env_literals(server)
     env.update({k: adapter.placeholder(k, v) for k, v in sorted(server.user_inputs().items())
@@ -41,13 +46,18 @@ def mcp_server_entry(adapter: TargetAdapter, server: MCPServer) -> dict:
         return entry
 
     assert server.command is not None
+    resolve = (
+        (lambda value: adapter.package_path(package, value, package_root))
+        if package is not None
+        else (lambda value: value)
+    )
     entry = {
         "type": "stdio",
-        "command": server.command.executable,
-        "args": list(server.command.args),
+        "command": resolve(server.command.executable),
+        "args": [resolve(arg) for arg in server.command.args],
     }
     if server.command.cwd:
-        entry["cwd"] = server.command.cwd
+        entry["cwd"] = resolve(server.command.cwd)
     if env:
         entry["env"] = env
     return entry
@@ -99,9 +109,12 @@ class ClaudeCodeAdapter(TargetAdapter):
         if package.mcp_servers:
             write_json(
                 plugin_dir / ".mcp.json",
-                {"mcpServers": {s.name: mcp_server_entry(self, s) for s in package.mcp_servers}},
+                {"mcpServers": {
+                    s.name: mcp_server_entry(self, s, package) for s in package.mcp_servers
+                }},
             )
 
+        self.stage_portable_payload(package, plugin_dir)
         self.stage_skills(package, plugin_dir / "skills")
         for assets, folder in (
             (package.commands, "commands"),

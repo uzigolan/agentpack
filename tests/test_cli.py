@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -108,3 +109,91 @@ def test_project_option_still_works(tmp_path: Path):
     make_project(tmp_path / "proj")
     result = runner.invoke(app, ["validate", "-p", str(tmp_path / "proj")])
     assert result.exit_code == 0, result.output
+
+
+def test_pack_import_copies_portable_runtime_skills_and_mcp(tmp_path: Path):
+    project = tmp_path / "project"
+    result = runner.invoke(app, ["init", str(project), "--name", "portable-test"])
+    assert result.exit_code == 0, result.output
+
+    source = tmp_path / "producer-pack"
+    (source / "skills" / "network").mkdir(parents=True)
+    (source / "mcps").mkdir()
+    (source / "runtime" / "windows-amd64").mkdir(parents=True)
+    (source / "config").mkdir()
+    (source / "skills" / "network" / "SKILL.md").write_text(
+        SKILL.replace("name: alpha", "name: network"), encoding="utf-8"
+    )
+    (source / "runtime" / "windows-amd64" / "server.exe").write_bytes(b"runtime")
+    (source / "config" / "inventory.example.yaml").write_text("devices: []\n")
+    (source / "mcps" / "stdio.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "rad-network-toolkit": {
+                        "type": "stdio",
+                        "command": "${packageRoot}/runtime/windows-amd64/server.exe",
+                        "args": ["--server", "legacy"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (source / "pack.json").write_text(
+        json.dumps(
+            {
+                "portable": True,
+                "runtime": "windows-amd64",
+                "knowledge": "served",
+                "mcps": ["stdio.json"],
+                "package_root_placeholder": "${packageRoot}",
+                "mutable_config": "%LOCALAPPDATA%\\RAD",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    imported = runner.invoke(
+        app, ["pack", "import", str(source), "--project", str(project)]
+    )
+    assert imported.exit_code == 0, imported.output
+    assert "Skills: 1; MCP servers: 1" in imported.output
+    assert (project / "portable" / "runtime" / "windows-amd64" / "server.exe").is_file()
+
+    built = runner.invoke(
+        app, ["build", "--project", str(project), "--target", "claude-desktop"]
+    )
+    assert built.exit_code == 0, built.output
+    bundle = project / "dist" / "build" / "claude-desktop" / "mcpb" / "rad-network-toolkit"
+    manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["server"]["mcp_config"]["command"] == (
+        "${__dirname}/runtime/windows-amd64/server.exe"
+    )
+    assert (bundle / "runtime" / "windows-amd64" / "server.exe").is_file()
+
+    all_targets = runner.invoke(app, ["build", "--project", str(project)])
+    assert all_targets.exit_code == 0, all_targets.output
+    build_root = project / "dist" / "build"
+    claude_code = json.loads(
+        (build_root / "claude-code" / "portable-test" / ".mcp.json").read_text()
+    )
+    copilot = json.loads((build_root / "copilot" / ".mcp.json").read_text())
+    codex = json.loads(
+        (build_root / "codex" / "plugins" / "portable-test" / ".mcp.json").read_text()
+    )
+    for config in (claude_code, copilot, codex):
+        command = config["mcpServers"]["rad-network-toolkit"]["command"]
+        assert command == "${CLAUDE_PLUGIN_ROOT}/runtime/windows-amd64/server.exe"
+    assert (build_root / "universal" / "runtime" / "windows-amd64" / "server.exe").is_file()
+
+    packaged = runner.invoke(
+        app, ["package", "--project", str(project), "--target", "claude-desktop"]
+    )
+    assert packaged.exit_code == 0, packaged.output
+    mcpb = project / "dist" / "packages" / (
+        "claude-desktop-rad-network-toolkit-stdio-0.1.0.mcpb"
+    )
+    assert mcpb.is_file()
+    with zipfile.ZipFile(mcpb) as archive:
+        assert "runtime/windows-amd64/server.exe" in archive.namelist()

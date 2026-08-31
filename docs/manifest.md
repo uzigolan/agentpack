@@ -78,6 +78,7 @@ targetRaw:                          # escape hatch; use sparingly
 | `metadata.version` | no | Defaults to `0.1.0`; propagated to every target that supports versions |
 | `targets` | no | Default set built when `--target` is omitted |
 | `include` | no | Paths to other AgentPack projects (see below) |
+| `portablePack` | no | Self-contained runtime/config payload copied into target artifacts; use `agentpack pack import DIRECTORY` to create this entry |
 | `build.knowledge` | no | `served` (default) or `bundled`. Overridable at build time with `--knowledge` |
 | `build.output` | no | Folder every generated artifact goes into; defaults to `dist`. Set it with `agentpack init -o <folder>`, or override one run with `agentpack build -o <folder>`. Resolved relative to the manifest. |
 | `compatibility.unsupportedFeaturePolicy` | no | `error` promotes compatibility warnings to failures |

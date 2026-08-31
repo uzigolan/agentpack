@@ -65,3 +65,12 @@ def test_build_manifest_points_at_the_guide(package, tmp_path: Path):
         (tmp_path / "dist" / "agentpack-build.json").read_text(encoding="utf-8")
     )
     assert manifest["installGuide"] == "INSTALL.md"
+
+
+def test_package_writes_standalone_guides_next_to_archives(package, tmp_path: Path):
+    build(package, targets=ALL_TARGETS, output_dir=tmp_path / "dist", archive=True)
+    packages = tmp_path / "dist" / "packages"
+    markdown = (packages / "INSTALL.md").read_text(encoding="utf-8")
+    assert (packages / "INSTALL.html").is_file()
+    assert "claude-desktop-netops-stdio-0.1.0.mcpb" in markdown
+    assert "agentpack" not in markdown.lower()

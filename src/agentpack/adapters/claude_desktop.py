@@ -14,8 +14,10 @@ Verified facts encoded here (from a production toolkit that ships this format):
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -38,6 +40,7 @@ MANIFEST_VERSION = "0.3"
 
 BRIDGE_EXECUTABLE = "agentpack-http-bridge-setup.exe"
 BRIDGE_SOURCE = Path(__file__).resolve().parents[3] / "bridge"
+PYTHON_BRIDGE_SOURCE = Path(__file__).resolve().parents[1] / "bridge" / "http_bridge.py"
 
 _RUNTIME_BY_EXECUTABLE = {
     "node": "node",
@@ -67,16 +70,7 @@ def _entry_point(executable: str, args: list[str]) -> str:
     return executable
 
 
-def _windows_bridge() -> Path:
-    """Build a source-versioned bridge once and embed it in the MCPB."""
-    digest = hashlib.sha256()
-    for source in ("main.go", "go.mod", "go.sum"):
-        digest.update((BRIDGE_SOURCE / source).read_bytes())
-    revision = digest.hexdigest()[:12]
-    output = Path(tempfile.gettempdir()) / "agentpack-bridge" / revision / BRIDGE_EXECUTABLE
-    if output.is_file():
-        return output
-    output.parent.mkdir(parents=True, exist_ok=True)
+def _build_go_bridge(output: Path, revision: str) -> None:
     try:
         subprocess.run(
             [
@@ -93,11 +87,79 @@ def _windows_bridge() -> Path:
             capture_output=True,
             text=True,
         )
-    except FileNotFoundError as exc:
-        message = "HTTP MCPB packaging requires Go to build AgentPack's Windows bridge"
-        raise RuntimeError(message) from exc
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(f"could not build AgentPack's Windows bridge: {exc.stderr}") from exc
+
+
+def _build_python_bridge(output: Path, revision: str) -> None:
+    missing = [
+        package
+        for package in ("mcp", "PyInstaller")
+        if importlib.util.find_spec(package) is None
+    ]
+    if missing:
+        names = ", ".join(missing)
+        raise RuntimeError(
+            "HTTP MCPB packaging requires Go or AgentPack's Python bridge dependencies; "
+            f"missing {names}. Install the bridge-python extra or run: "
+            'python -m pip install "mcp>=1.27,<2" "pyinstaller>=6.15"'
+        )
+    if sys.platform != "win32":
+        raise RuntimeError("the Python HTTP bridge executable must be built on Windows")
+
+    build_root = Path(tempfile.gettempdir()) / "agentpack-bridge-build" / revision
+    build_root.mkdir(parents=True, exist_ok=True)
+    command = [
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        "--onefile",
+        "--noconfirm",
+        "--clean",
+        "--noupx",
+        "--name",
+        output.stem,
+        "--distpath",
+        str(output.parent),
+        "--workpath",
+        str(build_root / "work"),
+        "--specpath",
+        str(build_root / "spec"),
+        "--collect-all",
+        "mcp",
+        str(PYTHON_BRIDGE_SOURCE),
+    ]
+    try:
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "unknown PyInstaller error").strip()
+        raise RuntimeError(f"could not build Python HTTP bridge: {detail}") from exc
+    if not output.is_file():
+        raise RuntimeError(f"PyInstaller did not create {output}")
+
+
+def _windows_bridge() -> Path:
+    """Build a source-versioned bridge once and embed it in the MCPB."""
+    digest = hashlib.sha256(PYTHON_BRIDGE_SOURCE.read_bytes())
+    go_sources = [BRIDGE_SOURCE / name for name in ("main.go", "go.mod", "go.sum")]
+    for source in go_sources:
+        if source.is_file():
+            digest.update(source.read_bytes())
+    revision = digest.hexdigest()[:12]
+    output = Path(tempfile.gettempdir()) / "agentpack-bridge" / revision / BRIDGE_EXECUTABLE
+    if output.is_file():
+        return output
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    if shutil.which("go") and all(source.is_file() for source in go_sources):
+        _build_go_bridge(output, revision)
+    else:
+        _build_python_bridge(output, revision)
     return output
 
 
@@ -191,9 +253,18 @@ class ClaudeDesktopAdapter(TargetAdapter):
                 env[key] = declare(key, var)
 
         if server.transport is TransportType.STDIO and server.command:
-            command = server.command.executable
-            args = list(server.command.args)
-            entry_point = _entry_point(command, args)
+            source_command = server.command.executable
+            command = self.package_path(package, source_command, "${__dirname}")
+            args = [self.package_path(package, arg, "${__dirname}") for arg in server.command.args]
+            if (
+                package.portable_payload
+                and package.portable_payload.package_root_placeholder in source_command
+            ):
+                entry_point = source_command.replace(
+                    package.portable_payload.package_root_placeholder + "/", ""
+                ).replace(package.portable_payload.package_root_placeholder + "\\", "")
+            else:
+                entry_point = _entry_point(command, args)
             runtime = _runtime(command)
         else:
             assert server.endpoint is not None
@@ -246,6 +317,7 @@ class ClaudeDesktopAdapter(TargetAdapter):
 
         for server in package.mcp_servers:
             bundle = output_dir / "mcpb" / server.name
+            self.stage_portable_payload(package, bundle)
             write_json(bundle / "manifest.json", self._manifest(package, server))
             if server.is_remote:
                 bridge = bundle / "server" / BRIDGE_EXECUTABLE

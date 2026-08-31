@@ -37,6 +37,10 @@ Changelog = "https://github.com/uzigolan/agentpack/blob/main/CHANGELOG.md"
 Issues = "https://github.com/uzigolan/agentpack/issues"
 
 [project.optional-dependencies]
+bridge-python = [
+  "mcp>=1.27,<2",
+  "pyinstaller>=6.15",
+]
 dev = [
   "pytest>=8.0",
   "ruff>=0.4",

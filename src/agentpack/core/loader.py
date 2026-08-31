@@ -33,6 +33,7 @@ from agentpack.models.package import (
     MCPCapabilities,
     MCPServer,
     PackageMetadata,
+    PortablePayload,
     Skill,
     TransportType,
     UnsupportedFeaturePolicy,
@@ -412,6 +413,25 @@ def load_package(
 
     metadata = PackageMetadata(**data["metadata"])
 
+    portable_payload = None
+    if portable_raw := data.get("portablePack"):
+        if not isinstance(portable_raw, dict) or not portable_raw.get("path"):
+            raise AgentPackError(AP1001, "portablePack.path is required")
+        portable_path = ensure_inside(
+            project_dir, project_dir / str(portable_raw["path"])
+        )
+        if not portable_path.is_dir():
+            raise AgentPackError(AP1003, f"portable pack payload not found: {portable_raw['path']}")
+        placeholder = str(portable_raw.get("packageRootPlaceholder", "${packageRoot}"))
+        if not placeholder:
+            raise AgentPackError(AP1001, "portablePack.packageRootPlaceholder cannot be empty")
+        portable_payload = PortablePayload(
+            source_dir=portable_path,
+            package_root_placeholder=placeholder,
+            runtime=portable_raw.get("runtime"),
+            mutable_config=portable_raw.get("mutableConfig"),
+        )
+
     included = _load_includes(project_dir, data.get("include") or [], diags, seen)
 
     skills: list[Skill] = []
@@ -485,6 +505,7 @@ def load_package(
         targets=normalized_targets,
         skills=sorted(skills, key=lambda s: s.name),
         mcp_servers=sorted(servers, key=lambda s: s.name),
+        portable_payload=portable_payload,
         claude_desktop_mcpb=sorted(desktop_mcpb),
         prompts=assets["prompts"] + assets["instructions"],
         agents=assets["agents"],

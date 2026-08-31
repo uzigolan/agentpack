@@ -43,6 +43,9 @@ def build_mcp_json(adapter: TargetAdapter, package: AgentPackage) -> dict:
     inputs: list[dict] = []
     servers: dict[str, dict] = {}
     embedded_bearer_token = package.options_for("copilot").get("_embedded_bearer_token")
+    package_root = (
+        "${CLAUDE_PLUGIN_ROOT}" if adapter.name == "copilot" else "${workspaceFolder}"
+    )
 
     for server in package.mcp_servers:
         entry: dict
@@ -69,11 +72,18 @@ def build_mcp_json(adapter: TargetAdapter, package: AgentPackage) -> dict:
             assert server.command is not None
             entry = {
                 "type": "stdio",
-                "command": server.command.executable,
-                "args": list(server.command.args),
+                "command": adapter.package_path(
+                    package, server.command.executable, package_root
+                ),
+                "args": [
+                    adapter.package_path(package, arg, package_root)
+                    for arg in server.command.args
+                ],
             }
             if server.command.cwd:
-                entry["cwd"] = server.command.cwd
+                entry["cwd"] = adapter.package_path(
+                    package, server.command.cwd, package_root
+                )
 
         env = adapter.mcp_env_literals(server)
         for key, var in sorted(server.environment.items()):
@@ -142,6 +152,7 @@ class CopilotVSCodeAdapter(TargetAdapter):
         write_json(workspace / ".vscode" / "mcp.json", config)
         write_json(output_dir / "mcp.json", config)
 
+        self.stage_portable_payload(package, workspace)
         self.stage_skills(package, workspace / ".github" / "skills")
         for prompt in package.prompts:
             dest = workspace / ".github" / "prompts" / prompt.relative_path
@@ -230,6 +241,7 @@ class CopilotPluginAdapter(CopilotVSCodeAdapter):
         # compatibility.
         write_json(output_dir / ".copilot-plugin" / "plugin.json", manifest)
         write_json(output_dir / ".claude-plugin" / "plugin.json", manifest)
+        self.stage_portable_payload(package, output_dir)
         self.stage_skills(package, output_dir / "skills")
         for assets, folder in (
             (package.prompts, "prompts"),

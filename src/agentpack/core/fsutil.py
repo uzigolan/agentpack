@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 import zipfile
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from agentpack.core.diagnostics import AP1006, AgentPackError
+from agentpack.core.diagnostics import AP1006, AP3001, AgentPackError
 
 # Fixed timestamp so archives are byte-identical across builds (1980-01-01,
 # the earliest value the ZIP format can represent).
@@ -84,7 +85,32 @@ def zip_dir(source: Path, archive: Path, *, arc_root: str | None = None) -> Path
     return archive
 
 
+def remove_tree(path: Path) -> None:
+    """Remove a generated directory, tolerating brief Windows file locks.
+
+    Antivirus and Explorer can hold a native DLL/PYD in a just-written package
+    for a moment. Retry those transient locks; otherwise raise a concise
+    AgentPack error instead of leaking a Python traceback.
+    """
+    attempts = 5
+    for attempt in range(attempts):
+        if not path.exists():
+            break
+        try:
+            shutil.rmtree(path)
+            break
+        except PermissionError as exc:
+            if attempt + 1 == attempts:
+                raise AgentPackError(
+                    AP3001,
+                    f"cannot clean generated output '{path}': {exc.filename or path} is locked. "
+                    "Close any app using the package, wait for antivirus scanning to finish, "
+                    "then run 'agentpack clean' again.",
+                ) from None
+            time.sleep(0.5 * (attempt + 1))
+
+
 def clean_dir(path: Path) -> None:
-    if path.exists():
-        shutil.rmtree(path)
+    """Replace a generated directory, tolerating brief Windows file locks."""
+    remove_tree(path)
     path.mkdir(parents=True, exist_ok=True)

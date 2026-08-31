@@ -12,6 +12,13 @@ CLI; see [docs/manifest.md](docs/manifest.md).
 
 ### Added
 
+- `agentpack pack import DIRECTORY` for complete portable packs containing
+  skills, MCP JSON definitions, runtime/config payloads, and `${packageRoot}`
+  commands. Generated target artifacts carry the payload and resolve the
+  package-root placeholder at the installed bundle/plugin root.
+- A self-contained Python/PyInstaller fallback for Claude Desktop HTTP MCPB
+  bridges. AgentPack still prefers Go, but can now package the Windows bridge
+  without Go when the `bridge-python` optional dependencies are installed.
 - `agentpack skill add|remove` and `agentpack mcp add|update|remove` to maintain
   an existing manifest. `skill add` is idempotent and recognises a covering
   parent entry. Edits are round-tripped, so comments and formatting survive.

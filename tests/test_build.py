@@ -303,8 +303,10 @@ def test_packaging_clears_archives_from_the_previous_run(package, tmp_path: Path
 
     assert summary.ok
     assert not stale.exists()
-    assert [path.name for path in (output / "packages").iterdir()] == [
-        "universal-0.1.0.zip"
+    assert sorted(path.name for path in (output / "packages").iterdir()) == [
+        "INSTALL.html",
+        "INSTALL.md",
+        "universal-0.1.0.zip",
     ]
 
 

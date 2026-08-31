@@ -90,6 +90,18 @@ class TargetAdapter(ABC):
             out.extend(self.stage_skill(skill, dest, mode))
         return out
 
+    def stage_portable_payload(self, package: AgentPackage, dest: Path) -> list[str]:
+        """Copy an imported portable runtime/config payload into an artifact root."""
+        if not package.portable_payload:
+            return []
+        return copy_tree(package.portable_payload.source_dir, dest)
+
+    def package_path(self, package: AgentPackage, value: str, root: str) -> str:
+        """Resolve the producer's package-root placeholder for one target."""
+        if not package.portable_payload:
+            return value
+        return value.replace(package.portable_payload.package_root_placeholder, root)
+
     def user_input_rows(self, package: AgentPackage) -> list[tuple[str, str, EnvVar]]:
         return [
             (server.name, key, var)

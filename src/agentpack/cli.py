@@ -14,8 +14,9 @@ from agentpack import API_VERSION, __version__
 from agentpack.core import edit, mcp_import, scaffold
 from agentpack.core.builder import build as run_build
 from agentpack.core.diagnostics import AP1001, AgentPackError, Diagnostics, Severity
-from agentpack.core.fsutil import copy_tree, iter_files
+from agentpack.core.fsutil import copy_tree, ensure_inside, iter_files, remove_tree
 from agentpack.core.loader import load_package, resolve_manifest
+from agentpack.core.package_docs import write_guides
 from agentpack.core.registry import registry
 from agentpack.core.validator import validate as run_validate
 from agentpack.models.package import KnowledgeMode
@@ -83,7 +84,7 @@ def main() -> None:
         app()
     except AgentPackError as exc:
         typer.secho(f"ERROR {exc}", fg=typer.colors.RED)
-        raise typer.Exit(code=1) from None
+        raise SystemExit(1) from None
 
 
 @app.command()
@@ -290,6 +291,27 @@ def package_cmd(
     )
 
 
+@app.command(name="target-install")
+def target_install(
+    packages_dir: Annotated[
+        Path,
+        typer.Argument(help="Folder containing the finished target packages."),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Folder for INSTALL.md and INSTALL.html."),
+    ] = None,
+) -> None:
+    """Create standalone Markdown and HTML install guides from package files only."""
+    try:
+        markdown, html, artifacts = write_guides(packages_dir, output)
+    except AgentPackError as exc:
+        raise _fail(exc) from None
+    typer.secho(f"Markdown guide: {markdown}", fg=typer.colors.GREEN)
+    typer.secho(f"HTML guide:     {html}", fg=typer.colors.GREEN)
+    typer.echo(f"Detected {len(artifacts)} package artifact(s).")
+
+
 @app.command(name="list-targets")
 def list_targets(
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
@@ -315,12 +337,13 @@ def clean(
     output: Annotated[Path | None, typer.Option()] = None,
 ) -> None:
     """Remove the build output directory."""
-    import shutil
-
     pkg, _ = _load(project, file, package_name)
     out = output or (pkg.project_dir / pkg.build.output)
     if out.exists():
-        shutil.rmtree(out)
+        try:
+            remove_tree(out)
+        except AgentPackError as exc:
+            raise _fail(exc) from None
         typer.secho(f"Removed {out}", fg=typer.colors.GREEN)
     else:
         typer.echo(f"Nothing to clean at {out}")
@@ -365,8 +388,10 @@ def version(ctx: typer.Context) -> None:
 # --------------------------------------------------------------------------
 skill_app = typer.Typer(no_args_is_help=True, help="Register skill paths in the manifest.")
 mcp_app = typer.Typer(no_args_is_help=True, help="Manage MCP server definitions.")
+pack_app = typer.Typer(no_args_is_help=True, help="Import complete portable capability packs.")
 app.add_typer(skill_app, name="skill")
 app.add_typer(mcp_app, name="mcp")
+app.add_typer(pack_app, name="pack")
 
 
 def _open_manifest(project: Path, file: Path | None, package_name: str | None = None):
@@ -413,6 +438,148 @@ def _relative_to_manifest(manifest: Path, path: str, key: str) -> str:
         raise typer.Exit(code=1)
 
     return edit.normalize(resolved.relative_to(root).as_posix() or ".")
+
+
+@pack_app.command("import")
+def pack_import(
+    source: Annotated[
+        Path,
+        typer.Argument(help="Portable pack directory containing pack.json, skills and mcps."),
+    ],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    package_name: PackageNameOpt = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option("--overwrite", help="Replace existing imported files without asking."),
+    ] = False,
+) -> None:
+    """Import a producer pack as skills, MCP definitions and a portable runtime."""
+    manifest, doc = _open_manifest(project, file, package_name)
+    source = source.resolve()
+    descriptor_path = source / "pack.json"
+    if not source.is_dir() or not descriptor_path.is_file():
+        typer.secho(f"ERROR: portable pack not found: {source}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    try:
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        typer.secho(f"ERROR: invalid {descriptor_path}: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    if descriptor.get("portable") is not True:
+        typer.secho("ERROR: pack.json does not declare portable: true", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    skills_source = source / "skills"
+    mcp_names = descriptor.get("mcps") or []
+    try:
+        mcp_sources = [ensure_inside(source, source / "mcps" / str(name)) for name in mcp_names]
+    except AgentPackError as exc:
+        raise _fail(exc) from None
+    if not mcp_sources:
+        mcp_sources = sorted((source / "mcps").glob("*.json")) if (source / "mcps").is_dir() else []
+    missing = [path for path in mcp_sources if not path.is_file()]
+    if missing:
+        typer.secho(f"ERROR: MCP definition not found: {missing[0]}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    payload_sources = [
+        path for path in (source / "runtime", source / "config") if path.is_dir()
+    ]
+    payload_files = [
+        path
+        for path in (descriptor_path, source / "README.md", source / "VERSION")
+        if path.is_file()
+    ]
+    if not payload_sources:
+        typer.secho("ERROR: portable pack has no runtime/ or config/ payload", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    imported_documents: list[tuple[str, dict]] = []
+    for mcp_source in mcp_sources:
+        try:
+            imported_documents.extend(
+                mcp_import.servers_from_json(mcp_import.load_json(mcp_source), None)
+            )
+        except AgentPackError as exc:
+            raise _fail(exc) from None
+    server_names = [name for name, _ in imported_documents]
+    duplicates = sorted({name for name in server_names if server_names.count(name) > 1})
+    if duplicates:
+        typer.secho(
+            f"ERROR: duplicate MCP server(s) in portable pack: {', '.join(duplicates)}",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    placeholder = descriptor.get("package_root_placeholder", "${packageRoot}")
+    if not isinstance(placeholder, str) or not placeholder:
+        typer.secho(
+            "ERROR: package_root_placeholder must be a non-empty string",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    skills_dest = manifest.parent / "skills"
+    payload_dest = manifest.parent / "portable"
+    mcp_dir = edit.default_dir(doc, "mcp", edit.DEFAULT_MCP_DIR)
+    planned: list[tuple[Path, Path]] = []
+    if skills_source.is_dir():
+        planned.extend(
+            (skills_source / rel, skills_dest / rel) for rel in iter_files(skills_source)
+        )
+    for payload_source in payload_sources:
+        planned.extend(
+            (payload_source / rel, payload_dest / payload_source.name / rel)
+            for rel in iter_files(payload_source)
+        )
+    planned.extend((path, payload_dest / path.name) for path in payload_files)
+    mcp_targets = [
+        manifest.parent / mcp_dir / f"{server_name}.yaml"
+        for server_name, _ in imported_documents
+    ]
+    conflicts = [destination for _, destination in planned if destination.exists()]
+    conflicts.extend(target for target in mcp_targets if target.exists())
+    if conflicts and not overwrite:
+        overwrite = typer.confirm(
+            f"Import would overwrite {len(conflicts)} existing file(s). Overwrite?", default=False
+        )
+    if conflicts and not overwrite:
+        typer.secho("Import cancelled; existing files were left unchanged.", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+
+    for original, destination in planned:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(original, destination)
+
+    imported_servers = 0
+    for server_name, server_doc in imported_documents:
+        target = manifest.parent / mcp_dir / f"{server_name}.yaml"
+        edit.write_doc(target, server_doc)
+        imported_servers += 1
+
+    if skills_source.is_dir():
+        edit.add_entry(doc, "skills", "skills")
+    if imported_servers:
+        edit.add_entry(doc, "mcp", mcp_dir)
+    doc["portablePack"] = {
+        "path": "portable",
+        "packageRootPlaceholder": placeholder,
+        **({"runtime": descriptor["runtime"]} if descriptor.get("runtime") else {}),
+        **(
+            {"mutableConfig": descriptor["mutable_config"]}
+            if descriptor.get("mutable_config")
+            else {}
+        ),
+    }
+    if descriptor.get("knowledge") in {"served", "bundled"}:
+        doc.setdefault("build", {})["knowledge"] = descriptor["knowledge"]
+    edit.write_doc(manifest, doc)
+
+    skill_count = len(list(skills_source.glob("*/SKILL.md"))) if skills_source.is_dir() else 0
+    typer.secho(f"Imported portable pack: {source.name}", fg=typer.colors.GREEN)
+    typer.echo(f"Skills: {skill_count}; MCP servers: {imported_servers}; payload: portable/")
 
 
 @skill_app.command("add")

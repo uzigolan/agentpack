@@ -191,6 +191,19 @@ class BuildOptions(StrictModel):
     knowledge: KnowledgeMode = KnowledgeMode.SERVED
 
 
+class PortablePayload(StrictModel):
+    """Files imported from a self-contained producer pack.
+
+    ``source_dir`` is copied to the root of each installable artifact. MCP
+    commands may refer to that root using ``package_root_placeholder``.
+    """
+
+    source_dir: Path
+    package_root_placeholder: str = "${packageRoot}"
+    runtime: str | None = None
+    mutable_config: str | None = None
+
+
 class AgentPackage(StrictModel):
     """The normalized model handed to every adapter."""
 
@@ -198,6 +211,7 @@ class AgentPackage(StrictModel):
     targets: list[str] = Field(default_factory=list)
     skills: list[Skill] = Field(default_factory=list)
     mcp_servers: list[MCPServer] = Field(default_factory=list)
+    portable_payload: PortablePayload | None = None
     claude_desktop_mcpb: list[Path] = Field(default_factory=list)
     prompts: list[FileAsset] = Field(default_factory=list)
     agents: list[FileAsset] = Field(default_factory=list)

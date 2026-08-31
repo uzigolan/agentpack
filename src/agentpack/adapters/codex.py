@@ -101,16 +101,16 @@ class CodexAdapter(TargetAdapter):
                 lines += [f"{k} = {toml_string(v)}" for k, v in sorted(env.items())]
         return "\n".join(lines)
 
-    def _plugin_mcp_entry(self, server):  # noqa: ANN001
+    def _plugin_mcp_entry(self, package, server):  # noqa: ANN001
         """Emit Codex's bearer-token reference instead of a secret placeholder."""
         authorization = server.headers.get("Authorization")
         embedded_bearer_token = self._embedded_bearer_token
         if server.is_remote and server.endpoint and authorization and embedded_bearer_token:
-            entry = mcp_server_entry(self, server)
+            entry = mcp_server_entry(self, server, package, "${CLAUDE_PLUGIN_ROOT}")
             entry.setdefault("headers", {})["Authorization"] = f"Bearer {embedded_bearer_token}"
             return entry
 
-        entry = mcp_server_entry(self, server)
+        entry = mcp_server_entry(self, server, package, "${CLAUDE_PLUGIN_ROOT}")
         if (
             server.is_remote
             and authorization
@@ -159,7 +159,8 @@ class CodexAdapter(TargetAdapter):
             write_json(
                 plugin_dir / ".mcp.json",
                 {"mcpServers": {
-                    server.name: self._plugin_mcp_entry(server) for server in package.mcp_servers
+                    server.name: self._plugin_mcp_entry(package, server)
+                    for server in package.mcp_servers
                 }},
             )
         if meta.keywords:
@@ -172,6 +173,7 @@ class CodexAdapter(TargetAdapter):
             manifest["license"] = meta.license
 
         write_json(plugin_dir / ".codex-plugin" / "plugin.json", manifest)
+        self.stage_portable_payload(package, plugin_dir)
         self.stage_skills(package, plugin_dir / "skills")
         write_text(plugin_dir / "README.md", self.readme(package))
         # Codex discovers a marketplace manifest at this exact path within

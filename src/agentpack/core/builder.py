@@ -13,6 +13,7 @@ from agentpack.adapters.base import TargetAdapter
 from agentpack.core import install_guide
 from agentpack.core.diagnostics import AP2001, AP3001, Diagnostics
 from agentpack.core.fsutil import clean_dir, copy_tree, iter_files, write_json, write_text, zip_dir
+from agentpack.core.package_docs import write_guides
 from agentpack.core.registry import registry
 from agentpack.core.validator import validate
 from agentpack.models.package import AgentPackage, BuildResult
@@ -131,6 +132,10 @@ def build(
 
     guide_path = out_root / "INSTALL.md"
     write_text(guide_path, install_guide.render(package, built, out_root))
+    if archive and results:
+        # These recipient-facing guides inspect only the finished package files.
+        # They intentionally do not inherit manifest/build options.
+        write_guides(out_root / "packages")
 
     manifest = {
         "agentpackVersion": __version__,

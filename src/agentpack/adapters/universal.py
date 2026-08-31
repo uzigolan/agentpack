@@ -80,6 +80,7 @@ class UniversalAdapter(TargetAdapter):
         }
         write_json(output_dir / "plugin.json", index)
 
+        self.stage_portable_payload(package, output_dir)
         self.stage_skills(package, output_dir / "skills")
 
         for server in package.mcp_servers:
