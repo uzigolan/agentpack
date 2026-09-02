@@ -204,6 +204,15 @@ def build(
             help="Prompt for and embed a bearer token in Copilot and Codex packages.",
         ),
     ] = False,
+    reveal_secrets: Annotated[
+        bool,
+        typer.Option(
+            "--reveal-secrets",
+            help="Also write mcp.json into a universal package with already-imported "
+            "header/env secrets decoded, for local/internal use. Off by default: the "
+            "universal archive is otherwise safe to share or re-import as-is.",
+        ),
+    ] = False,
 ) -> None:
     """Build client packages into dist/."""
     pkg, diags = _load(project, file, package_name)
@@ -227,6 +236,13 @@ def build(
         # Runtime-only options: never written into agentpack.yaml.
         for target_name in supported.intersection(selected):
             pkg.target_options.setdefault(target_name, {})["_embedded_bearer_token"] = token
+    if reveal_secrets:
+        selected = list(target) if target else pkg.targets
+        if "universal" not in selected:
+            typer.secho("--reveal-secrets requires the universal target.", fg=typer.colors.RED)
+            raise typer.Exit(code=2)
+        # Runtime-only option: never written into agentpack.yaml.
+        pkg.target_options.setdefault("universal", {})["_reveal_secrets"] = True
 
     summary = run_build(
         pkg,
@@ -276,6 +292,15 @@ def package_cmd(
             help="Prompt for and embed a bearer token in Copilot and Codex packages.",
         ),
     ] = False,
+    reveal_secrets: Annotated[
+        bool,
+        typer.Option(
+            "--reveal-secrets",
+            help="Also write mcp.json into a universal package with already-imported "
+            "header/env secrets decoded, for local/internal use. Off by default: the "
+            "universal archive is otherwise safe to share or re-import as-is.",
+        ),
+    ] = False,
 ) -> None:
     """Build and emit distributable archives (dist/packages/)."""
     build(
@@ -288,6 +313,7 @@ def package_cmd(
         knowledge=knowledge,
         archive=True,
         embed_token=embed_token,
+        reveal_secrets=reveal_secrets,
     )
 
 

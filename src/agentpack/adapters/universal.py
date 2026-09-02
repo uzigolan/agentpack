@@ -7,13 +7,14 @@ machine-readable ``plugin.json`` index, so a package can be re-imported by
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import yaml
 
 from agentpack import API_VERSION, __version__
 from agentpack.adapters.base import TargetAdapter
-from agentpack.core.fsutil import write_json, write_text
+from agentpack.core.fsutil import write_json, write_text, zip_dir
 from agentpack.models.package import (
     AgentPackage,
     ArtifactType,
@@ -58,7 +59,7 @@ class UniversalAdapter(TargetAdapter):
                     "name": s.name,
                     "description": s.description,
                     "version": s.version,
-                    "path": f"skills/{s.name}",
+                    "path": f"skills/{s.name}.zip",
                     "hasReferences": s.has_references,
                 }
                 for s in package.skills
@@ -81,7 +82,17 @@ class UniversalAdapter(TargetAdapter):
         write_json(output_dir / "plugin.json", index)
 
         self.stage_portable_payload(package, output_dir)
-        self.stage_skills(package, output_dir / "skills")
+
+        # One zip per skill, not a loose tree: each archive's root is the
+        # skill's own directory (SKILL.md, and references/ when the build's
+        # knowledge mode bundles it), so it can be dropped in or re-imported
+        # as a self-contained unit without unpacking the whole package.
+        skills_dir = output_dir / "skills"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        for skill in package.skills:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as scratch:
+                self.stage_skill(skill, Path(scratch), package.build.knowledge)
+                zip_dir(Path(scratch) / skill.name, skills_dir / f"{skill.name}.zip")
 
         for server in package.mcp_servers:
             # The universal artifact is useful for re-packaging, but it is not
@@ -122,6 +133,57 @@ class UniversalAdapter(TargetAdapter):
                 yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
             )
 
+        # Opt-in only (agentpack build/package --reveal-secrets): unlike the
+        # per-server YAML above (deliberately secret-safe for sharing or
+        # re-import), this is a ready-to-use raw client config where every
+        # header/env value the pack currently holds is written out decoded,
+        # keyed by server name, so it can be pasted straight into a tool that
+        # expects that shape. Never emit this without a value actually
+        # present - a prompted/user-sourced var with nothing stored yet is
+        # left out rather than filled with a placeholder.
+        if package.options_for(self.name).get("_reveal_secrets"):
+            raw_servers: dict[str, dict] = {}
+            for server in package.mcp_servers:
+                entry: dict
+                if server.is_remote and server.endpoint:
+                    entry = {"type": "http", "url": server.endpoint.url}
+                    # A secret Authorization value is stored as a bare
+                    # token (the "Bearer " scheme is implied, matching how
+                    # every other adapter prompts for/embeds one) - unless
+                    # the producer's own literal config already spelled out
+                    # the full header, in which case it is left alone.
+                    headers = {}
+                    for key, var in sorted(server.headers.items()):
+                        value = var.value or var.default
+                        if not value:
+                            continue
+                        if (
+                            key.lower() == "authorization"
+                            and var.secret
+                            and not value.lower().startswith("bearer ")
+                        ):
+                            value = f"Bearer {value}"
+                        headers[key] = value
+                    if headers:
+                        entry["headers"] = headers
+                else:
+                    assert server.command is not None
+                    entry = {"type": "stdio", "command": server.command.executable}
+                    if server.command.args:
+                        entry["args"] = list(server.command.args)
+                    if server.command.cwd:
+                        entry["cwd"] = server.command.cwd
+                    env = {
+                        key: var.value or var.default
+                        for key, var in sorted(server.environment.items())
+                        if var.value or var.default
+                    }
+                    if env:
+                        entry["env"] = env
+                raw_servers[server.name] = entry
+            if raw_servers:
+                write_json(output_dir / "mcp.json", raw_servers)
+
         for assets, folder in (
             (package.prompts, "prompts"),
             (package.agents, "agents"),
@@ -148,5 +210,8 @@ class UniversalAdapter(TargetAdapter):
             "agentpack build --target claude-desktop --target copilot-vscode",
             "```",
             "",
-            "`plugin.json` indexes every capability in this directory.",
+            "`plugin.json` indexes every capability in this directory. Each "
+            "skill ships as its own `skills/<name>.zip` — unzip one to get "
+            "that skill's `SKILL.md` (and `references/` in bundled knowledge "
+            "mode) with nothing else attached.",
         ]

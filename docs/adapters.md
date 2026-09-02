@@ -154,9 +154,13 @@ dist/build/codex/
 
 ## universal
 
-Loss-free interchange format: `plugin.json` index + verbatim `skills/`, `mcp/`,
-`prompts/`, `agents/`, `commands/`, `hooks/`, `assets/`. No client consumes it
-directly; keep it for archival, diffing and re-packaging.
+Loss-free interchange format: `plugin.json` index + `mcp/`, `prompts/`,
+`agents/`, `commands/`, `hooks/`, `assets/` verbatim. `skills/` is the one
+exception — each skill is its own `skills/<name>.zip` (that skill's
+directory, zipped: `SKILL.md`, plus `references/` in bundled knowledge mode)
+rather than a loose tree, so one skill can be lifted out and reused without
+touching the rest of the package. No client consumes this format directly;
+keep it for archival, diffing and re-packaging.
 
 ## Writing an adapter
 

@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from pathlib import Path
 
 from agentpack.core.builder import build
 from agentpack.models.package import BuildOptions, EnvVarSource, KnowledgeMode
+
+
+def _skill_zip_names(zip_path: Path) -> set[str]:
+    with zipfile.ZipFile(zip_path) as zf:
+        return {name for name in zf.namelist() if not name.endswith("/")}
+
+
+def _skill_zip_text(zip_path: Path, member: str) -> str:
+    with zipfile.ZipFile(zip_path) as zf:
+        return zf.read(member).decode("utf-8")
 
 ALL_TARGETS = [
     "universal",
@@ -118,6 +129,36 @@ def test_imported_http_token_is_embedded_only_for_copilot_and_codex(package, tmp
                 assert token not in path.read_text(encoding="utf-8", errors="ignore")
 
 
+def test_universal_reveal_secrets_is_opt_in(package, tmp_path: Path):
+    # A full "Bearer ..." literal is left untouched; a bare token gets the
+    # scheme added, matching how every other adapter expects a secret
+    # Authorization value to be stored.
+    full_header = "Bearer imported-test-token"
+    authorization = package.mcp_servers[0].headers["Authorization"]
+    authorization.source = EnvVarSource.LITERAL
+    authorization.value = full_header
+
+    mcp_json = tmp_path / "dist" / "build" / "universal" / "mcp.json"
+
+    _build(package, tmp_path)
+    assert not mcp_json.exists()
+
+    package.target_options.setdefault("universal", {})["_reveal_secrets"] = True
+    _build(package, tmp_path)
+    raw = json.loads(mcp_json.read_text(encoding="utf-8"))
+    assert raw["monitoring"] == {
+        "type": "http",
+        "url": "https://mcp.example.com/mcp",
+        "headers": {"Authorization": full_header},
+    }
+    assert raw["netops"]["type"] == "stdio"
+
+    authorization.value = "bare-market-token"
+    _build(package, tmp_path)
+    raw = json.loads(mcp_json.read_text(encoding="utf-8"))
+    assert raw["monitoring"]["headers"]["Authorization"] == "Bearer bare-market-token"
+
+
 def test_claude_desktop_manifest_shape(package, tmp_path: Path):
     _build(package, tmp_path)
     bundle = (
@@ -227,31 +268,28 @@ def test_codex_can_embed_a_runtime_bearer_token(package, tmp_path: Path):
 def test_served_mode_strips_references_and_stamps(package, tmp_path: Path):
     package.build.knowledge = KnowledgeMode.SERVED
     _build(package, tmp_path)
-    skill_dir = tmp_path / "dist" / "build" / "universal" / "skills" / "network-analysis"
-    assert not (skill_dir / "references").exists()
-    assert "<!--agentpack-mode:served-->" in (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    skill_zip = tmp_path / "dist" / "build" / "universal" / "skills" / "network-analysis.zip"
+    names = _skill_zip_names(skill_zip)
+    assert not any(name.startswith("references/") for name in names)
+    assert "<!--agentpack-mode:served-->" in _skill_zip_text(skill_zip, "SKILL.md")
 
 
 def test_bundled_mode_keeps_references(package, tmp_path: Path):
     _build(package, tmp_path)
-    skill_dir = tmp_path / "dist" / "build" / "universal" / "skills" / "network-analysis"
-    assert (skill_dir / "references" / "alarms.md").is_file()
-    assert "<!--agentpack-mode:served-->" not in (skill_dir / "SKILL.md").read_text(
-        encoding="utf-8"
-    )
+    skill_zip = tmp_path / "dist" / "build" / "universal" / "skills" / "network-analysis.zip"
+    assert "references/alarms.md" in _skill_zip_names(skill_zip)
+    assert "<!--agentpack-mode:served-->" not in _skill_zip_text(skill_zip, "SKILL.md")
 
 
 def test_served_is_the_default_when_the_manifest_says_nothing(package, tmp_path: Path):
     package.build = BuildOptions()
     assert package.build.knowledge is KnowledgeMode.SERVED
     _build(package, tmp_path)
-    skill_dir = tmp_path / "dist" / "build" / "universal" / "skills" / "network-analysis"
-    assert not (skill_dir / "references").exists()
+    skill_zip = tmp_path / "dist" / "build" / "universal" / "skills" / "network-analysis.zip"
+    assert not any(name.startswith("references/") for name in _skill_zip_names(skill_zip))
 
 
 def test_builds_zipped_skill_as_a_normal_skill_folder(project: Path, tmp_path: Path):
-    import zipfile
-
     archive = project / "skills" / "zipped-skill.zip"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("zipped-skill/SKILL.md", "---\nname: zipped-skill\ndescription: zip\n---\n")
@@ -263,9 +301,9 @@ def test_builds_zipped_skill_as_a_normal_skill_folder(project: Path, tmp_path: P
     package.build.knowledge = KnowledgeMode.BUNDLED
     summary = build(package, targets=["universal"], output_dir=tmp_path / "dist")
     assert summary.ok
-    skill_dir = tmp_path / "dist" / "build" / "universal" / "skills" / "zipped-skill"
-    assert (skill_dir / "SKILL.md").is_file()
-    assert (skill_dir / "references" / "reference.md").read_text(encoding="utf-8") == "source"
+    skill_zip = tmp_path / "dist" / "build" / "universal" / "skills" / "zipped-skill.zip"
+    assert "SKILL.md" in _skill_zip_names(skill_zip)
+    assert _skill_zip_text(skill_zip, "references/reference.md") == "source"
 
 
 def test_strict_mode_fails_on_warnings(package, tmp_path: Path):
