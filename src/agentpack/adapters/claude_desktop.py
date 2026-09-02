@@ -163,6 +163,37 @@ def _windows_bridge() -> Path:
     return output
 
 
+# Claude Desktop installs each bundle under a deeply nested per-user path:
+# AppData\Local\Packages\...\Claude Extensions\local.mcpb.unknown.<name>\...
+# For a PyInstaller-frozen Python runtime, the fixed prefix (MSIX container)
+# plus the runtime's own deepest data files (jsonschema_specifications'
+# vocabulary schemas) already consume 229-246 chars depending on username
+# length alone - leaving as little as 9-21 chars of the 260-char MAX_PATH
+# budget for <name>. Deduping hyphen tokens is not enough headroom; <name>
+# is capped hard. It is never shown in the UI (display_name is separate),
+# so a short deterministic hash is preferred over readability.
+_MAX_EXTENSION_NAME_LEN = 10
+
+
+def _extension_name(meta_name: str, server_name: str) -> str:
+    """Manifest ``name``: short and MAX_PATH-safe, deduped when it fits.
+
+    Server tokens fully contained in ``meta_name`` are dropped first (cheap
+    readability win for short packages); if nothing would remain, the full
+    server name is kept so two servers in the same package can never
+    collapse to the same extension name. Whatever remains is hashed down to
+    ``_MAX_EXTENSION_NAME_LEN`` hex characters if it's still too long.
+    """
+    meta_tokens = meta_name.split("-")
+    seen = {token.lower() for token in meta_tokens}
+    server_tokens = server_name.split("-")
+    extra = [token for token in server_tokens if token.lower() not in seen] or server_tokens
+    name = "-".join(meta_tokens + extra)
+    if len(name) <= _MAX_EXTENSION_NAME_LEN:
+        return name
+    return hashlib.sha256(f"{meta_name}:{server_name}".encode()).hexdigest()[:_MAX_EXTENSION_NAME_LEN]
+
+
 def _archive_transport_label(server: MCPServer) -> str:
     """Return a readable, Windows-safe transport label for an MCPB filename."""
     if not server.is_remote:
@@ -284,7 +315,7 @@ class ClaudeDesktopAdapter(TargetAdapter):
 
         manifest = {
             "manifest_version": MANIFEST_VERSION,
-            "name": f"{meta.name}-{server.name}",
+            "name": _extension_name(meta.name, server.name),
             "display_name": server.display_name or f"{meta.title} — {server.name}",
             "version": meta.version,
             "description": server.description or meta.description,

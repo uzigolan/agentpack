@@ -125,7 +125,7 @@ def test_claude_desktop_manifest_shape(package, tmp_path: Path):
     )
     manifest = json.loads(bundle.read_text(encoding="utf-8"))
     assert manifest["manifest_version"] == "0.3"
-    assert manifest["name"] == "network-operations-netops"
+    assert manifest["name"] == "a84574dbcb"  # sha256("network-operations:netops")[:10]
     assert manifest["server"]["type"] == "python"
     assert manifest["server"]["entry_point"] == "netops_mcp.server"
     assert manifest["server"]["mcp_config"]["env"]["NETOPS_TOKEN"] == "${user_config.netops_token}"

@@ -315,6 +315,24 @@ runtime, so it has nothing for `pack import` to carry beyond what
 `skill import` + `mcp import` already handle. Import an HTTP pack with Option
 A above, even if it was produced by the same build script as a portable pack.
 
+**Windows path length.** Claude Desktop installs each MCPB under a deeply
+nested per-user path (`AppData\Local\Packages\...\Claude Extensions\<name>\`).
+If the bundled `runtime/` is a PyInstaller `--onedir` build, its own
+third-party package data (e.g. `jsonschema_specifications`'s per-draft
+schema files, all of which `jsonschema` imports unconditionally — none of
+them can be pruned) nests deep enough that the full path can exceed
+Windows' 260-char `MAX_PATH`, causing a `FileNotFoundError` for a file that
+genuinely exists. AgentPack keeps the MCPB's own `manifest.json` `name` to
+10 characters (see the CHANGELOG) to leave headroom for this, but that only
+covers the extension-name segment it controls; the fixed MSIX container
+prefix and the runtime's own depth are not adjustable from here. Building
+the portable runtime with `--onefile` instead avoids the problem entirely —
+it self-extracts to a short `%TEMP%\_MEIxxxxxx` path at run time instead of
+living under the long Extensions path. If you can't rebuild, unblock the
+current install by setting
+`HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled` (DWORD)
+to `1` and rebooting (Windows 10 1607+, requires admin).
+
 ### HTTP tokens
 
 For an HTTP MCP such as:

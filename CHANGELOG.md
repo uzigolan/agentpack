@@ -49,6 +49,14 @@ CLI; see [docs/manifest.md](docs/manifest.md).
 - `inspect --format` lost its `-f` short alias, which now means `--file`.
 - Manifest load errors exit cleanly with the diagnostic code instead of a
   traceback, whichever entry point is used.
+- Claude Desktop's MCPB `manifest.json` `name` field drops server-name tokens
+  already present in the package name, then falls back to a short
+  deterministic hash (10 hex chars) whenever the result is still longer than
+  that. `name` is never shown in the UI (`display_name` is separate), so a
+  hard length cap matters more than readability: it's what keeps the
+  installed extension's path under Windows' 260-char `MAX_PATH` for portable
+  `--onedir` Python runtimes, regardless of username length. See the Windows
+  path length note under portable packs in the README.
 
 ## [0.1.0] - 2026-08-29
 
