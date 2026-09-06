@@ -137,9 +137,12 @@ agentpack validate -n rad-agent-stdio
 agentpack package -n rad-agent-stdio
 ```
 
-Use `--overwrite` on the import command when intentionally refreshing an
-existing imported pack. The recipient does not need Python, Go, or the producer
-checkout when the imported runtime is already a self-contained executable.
+The import records the producer directory, so later `agentpack build` and
+`agentpack package` refresh the copied `portable/` payload before writing
+artifacts. Use `--overwrite` on the import command when intentionally replacing
+existing skills or MCP definitions too. The recipient does not need Python, Go,
+or the producer checkout when the imported runtime is already a self-contained
+executable.
 
 ---
 

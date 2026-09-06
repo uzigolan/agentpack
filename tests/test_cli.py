@@ -197,3 +197,45 @@ def test_pack_import_copies_portable_runtime_skills_and_mcp(tmp_path: Path):
     assert mcpb.is_file()
     with zipfile.ZipFile(mcpb) as archive:
         assert "runtime/windows-amd64/server.exe" in archive.namelist()
+
+
+def test_package_refreshes_imported_portable_payload(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    project = tmp_path / "artifacts" / "portable-refresh"
+    result = runner.invoke(app, ["init", "-n", "portable-refresh"])
+    assert result.exit_code == 0, result.output
+
+    source = tmp_path / "producer-pack"
+    (source / "mcps").mkdir(parents=True)
+    (source / "runtime" / "windows-amd64").mkdir(parents=True)
+    (source / "config").mkdir()
+    (source / "runtime" / "windows-amd64" / "server.exe").write_bytes(b"runtime")
+    (source / "config" / "knowledge.sqlite").write_bytes(b"old database")
+    (source / "mcps" / "stdio.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "radview": {
+                        "type": "stdio",
+                        "command": "${packageRoot}/runtime/windows-amd64/server.exe",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (source / "pack.json").write_text(
+        json.dumps({"portable": True, "runtime": "windows-amd64", "mcps": ["stdio.json"]}),
+        encoding="utf-8",
+    )
+
+    imported = runner.invoke(app, ["pack", "import", str(source), "-n", "portable-refresh"])
+    assert imported.exit_code == 0, imported.output
+    (source / "config" / "knowledge.sqlite").write_bytes(b"new database")
+
+    packaged = runner.invoke(app, ["package", "-n", "portable-refresh", "--target", "universal"])
+    assert packaged.exit_code == 0, packaged.output
+
+    archive_path = project / "dist" / "packages" / "universal-0.1.0.zip"
+    with zipfile.ZipFile(archive_path) as archive:
+        assert archive.read("config/knowledge.sqlite") == b"new database"

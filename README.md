@@ -159,6 +159,11 @@ currently how the RAD toolkit's stdio build works, not http. An HTTP pack has
 no runtime to bundle (it's a remote URL), so it always uses Option A, even if
 it was produced by the same build script.
 
+The import records the producer directory. Later `agentpack build` and
+`agentpack package` refresh `portable/` from that source before writing
+artifacts, so regenerated files such as SQLite knowledge databases are not
+silently packaged from an older import.
+
 Produces in `artifacts\rad-agent-toolkit-stdio\dist\packages\`:
 
 ```text
@@ -290,6 +295,10 @@ imported definitions is intended.
 ```powershell
 agentpack pack import "C:\source-repo\dist\pack_stdio" -n rad-agent-toolkit-stdio
 ```
+
+The source directory is saved in `portablePack.importedFrom`. Re-running
+`agentpack build` or `agentpack package` refreshes the copied `portable/`
+payload from that source before packaging.
 
 Expects a directory shaped like:
 

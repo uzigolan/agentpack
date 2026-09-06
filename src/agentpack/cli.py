@@ -14,7 +14,7 @@ from agentpack import API_VERSION, __version__
 from agentpack.core import edit, mcp_import, scaffold
 from agentpack.core.builder import build as run_build
 from agentpack.core.diagnostics import AP1001, AgentPackError, Diagnostics, Severity
-from agentpack.core.fsutil import copy_tree, ensure_inside, iter_files, remove_tree
+from agentpack.core.fsutil import clean_dir, copy_tree, ensure_inside, iter_files, remove_tree
 from agentpack.core.loader import load_package, resolve_manifest
 from agentpack.core.package_docs import write_guides
 from agentpack.core.registry import registry
@@ -215,6 +215,8 @@ def build(
     ] = False,
 ) -> None:
     """Build client packages into dist/."""
+    manifest, doc = _open_manifest(project, file, package_name)
+    refreshed = _refresh_imported_portable_payload(manifest, doc)
     pkg, diags = _load(project, file, package_name)
     if diags.has_errors():
         _echo_diagnostics(diags)
@@ -260,6 +262,8 @@ def build(
         typer.secho("Build failed (strict mode: warnings present).", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
+    if refreshed:
+        typer.secho("Refreshed imported portable payload.", fg=typer.colors.GREEN)
     typer.echo("")
     typer.echo(f"{'TARGET':<20}{'TYPE':<24}{'FILES':>6}")
     for result in summary.results:
@@ -466,6 +470,56 @@ def _relative_to_manifest(manifest: Path, path: str, key: str) -> str:
     return edit.normalize(resolved.relative_to(root).as_posix() or ".")
 
 
+def _portable_descriptor(source: Path) -> dict:
+    descriptor_path = source / "pack.json"
+    if not source.is_dir() or not descriptor_path.is_file():
+        raise AgentPackError(AP1001, f"portable pack not found: {source}")
+    try:
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AgentPackError(AP1001, f"invalid {descriptor_path}: {exc}") from None
+    if descriptor.get("portable") is not True:
+        raise AgentPackError(AP1001, "pack.json does not declare portable: true")
+    return descriptor
+
+
+def _portable_payload_sources(source: Path) -> tuple[list[Path], list[Path]]:
+    payload_sources = [
+        path for path in (source / "runtime", source / "config") if path.is_dir()
+    ]
+    payload_files = [
+        path
+        for path in (source / "pack.json", source / "README.md", source / "VERSION")
+        if path.is_file()
+    ]
+    if not payload_sources:
+        raise AgentPackError(AP1001, "portable pack has no runtime/ or config/ payload")
+    return payload_sources, payload_files
+
+
+def _refresh_imported_portable_payload(manifest: Path, doc: dict) -> bool:
+    portable_raw = doc.get("portablePack")
+    if not isinstance(portable_raw, dict) or not portable_raw.get("importedFrom"):
+        return False
+
+    raw_source = Path(str(portable_raw["importedFrom"]))
+    source = (raw_source if raw_source.is_absolute() else manifest.parent / raw_source).resolve()
+    try:
+        _portable_descriptor(source)
+        payload_sources, payload_files = _portable_payload_sources(source)
+        payload_dest = ensure_inside(
+            manifest.parent, manifest.parent / str(portable_raw.get("path") or "portable")
+        )
+        clean_dir(payload_dest)
+        for payload_source in payload_sources:
+            copy_tree(payload_source, payload_dest / payload_source.name)
+        for payload_file in payload_files:
+            shutil.copy2(payload_file, payload_dest / payload_file.name)
+    except AgentPackError as exc:
+        raise _fail(exc) from None
+    return True
+
+
 @pack_app.command("import")
 def pack_import(
     source: Annotated[
@@ -483,19 +537,10 @@ def pack_import(
     """Import a producer pack as skills, MCP definitions and a portable runtime."""
     manifest, doc = _open_manifest(project, file, package_name)
     source = source.resolve()
-    descriptor_path = source / "pack.json"
-    if not source.is_dir() or not descriptor_path.is_file():
-        typer.secho(f"ERROR: portable pack not found: {source}", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
     try:
-        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError) as exc:
-        typer.secho(f"ERROR: invalid {descriptor_path}: {exc}", fg=typer.colors.RED)
-        raise typer.Exit(code=1) from None
-    if descriptor.get("portable") is not True:
-        typer.secho("ERROR: pack.json does not declare portable: true", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
+        descriptor = _portable_descriptor(source)
+    except AgentPackError as exc:
+        raise _fail(exc) from None
 
     skills_source = source / "skills"
     mcp_names = descriptor.get("mcps") or []
@@ -510,17 +555,10 @@ def pack_import(
         typer.secho(f"ERROR: MCP definition not found: {missing[0]}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    payload_sources = [
-        path for path in (source / "runtime", source / "config") if path.is_dir()
-    ]
-    payload_files = [
-        path
-        for path in (descriptor_path, source / "README.md", source / "VERSION")
-        if path.is_file()
-    ]
-    if not payload_sources:
-        typer.secho("ERROR: portable pack has no runtime/ or config/ payload", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
+    try:
+        payload_sources, payload_files = _portable_payload_sources(source)
+    except AgentPackError as exc:
+        raise _fail(exc) from None
 
     imported_documents: list[tuple[str, dict]] = []
     for mcp_source in mcp_sources:
@@ -575,6 +613,11 @@ def pack_import(
         typer.secho("Import cancelled; existing files were left unchanged.", fg=typer.colors.YELLOW)
         raise typer.Exit(code=1)
 
+    if overwrite and payload_dest.exists():
+        try:
+            clean_dir(payload_dest)
+        except AgentPackError as exc:
+            raise _fail(exc) from None
     for original, destination in planned:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(original, destination)
@@ -592,6 +635,7 @@ def pack_import(
     doc["portablePack"] = {
         "path": "portable",
         "packageRootPlaceholder": placeholder,
+        "importedFrom": str(source),
         **({"runtime": descriptor["runtime"]} if descriptor.get("runtime") else {}),
         **(
             {"mutableConfig": descriptor["mutable_config"]}
