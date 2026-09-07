@@ -7,6 +7,8 @@ from pathlib import Path
 from agentpack import API_VERSION
 from agentpack.core.fsutil import write_text
 
+DEFAULT_AUTHOR_NAME = "Uzi Golan"
+
 MANIFEST = """apiVersion: {api}
 kind: AgentPackage
 
@@ -17,7 +19,7 @@ metadata:
   description: Describe what this package gives an AI agent.
   license: Apache-2.0
   authors:
-    - name: Your Name
+    - name: {author_name}
 
 targets:
   - universal
@@ -105,6 +107,9 @@ metadata:
   displayName: {title}
   version: {version}
   description: Describe what this package gives an AI agent.
+  license: Apache-2.0
+  authors:
+    - name: {author_name}
 
 targets:
   - universal
@@ -166,6 +171,7 @@ def init_project(
     example: bool = False,
     output: str = "dist",
     version: str = "0.1.0",
+    author_name: str = DEFAULT_AUTHOR_NAME,
 ) -> list[str]:
     directory.mkdir(parents=True, exist_ok=True)
     title = name.replace("-", " ").replace("_", " ").title()
@@ -173,7 +179,12 @@ def init_project(
 
     files = {
         manifest_name: (MANIFEST if example else BARE_MANIFEST).format(
-            api=API_VERSION, name=name, title=title, output=output, version=version
+        api=API_VERSION,
+        name=name,
+        title=title,
+        output=output,
+        version=version,
+        author_name=author_name,
         ),
         ".gitignore": GITIGNORE.format(output=output),
         "README.md": README.format(

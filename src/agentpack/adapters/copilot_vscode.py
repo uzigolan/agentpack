@@ -259,8 +259,7 @@ class CopilotPluginAdapter(CopilotVSCodeAdapter):
 
     def install_steps(self, package: AgentPackage) -> list[str]:
         return [
-            "1. Extract `"
-            f"copilot-{package.metadata.version}.zip` from "
+            "1. Extract the `copilot-<transport>-<version>.zip` archive from "
             "`dist/packages/` into a folder.",
             "2. Click Copilot's **Settings** gear. It opens Copilot's plugin settings.",
             "3. Open **Plugins → + Install Plugin from Source**, then paste or select the "

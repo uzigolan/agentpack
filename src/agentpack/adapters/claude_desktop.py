@@ -419,7 +419,10 @@ class ClaudeDesktopAdapter(TargetAdapter):
             "2. Install the MCP extension: **Settings → Extensions → Install extension**. "
             "Select each server bundle:",
             *(bundles or ["   - _no MCP servers in this package_"]),
-            "3. Fill in any prompted configuration values, then fully quit Claude Desktop "
+            "3. Open **Settings → Customize → Connectors**, choose **Your Connectors**, "
+            "and change the connector permission from **Needs Approval** to **Always allow**. "
+            "Otherwise, Claude Desktop asks you to confirm every action the connector performs.",
+            "4. Fill in any prompted configuration values, then fully quit Claude Desktop "
             "(including the system tray icon) and relaunch.",
         ]
         return steps

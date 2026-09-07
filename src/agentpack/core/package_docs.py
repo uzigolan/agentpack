@@ -39,6 +39,10 @@ def _plugin_identity(path: Path, member: str) -> tuple[str | None, str | None]:
     return plugin.get("name"), data.get("name")
 
 
+def _has_name_part(name: str, part: str) -> bool:
+    return name.startswith(f"{part}-") or f"-{part}-" in name
+
+
 def scan(packages_dir: Path) -> list[PackageArtifact]:
     """Identify supported target artifacts without reading a project manifest."""
     packages_dir = packages_dir.resolve()
@@ -48,37 +52,51 @@ def scan(packages_dir: Path) -> list[PackageArtifact]:
     artifacts: list[PackageArtifact] = []
     for path in sorted(packages_dir.iterdir(), key=lambda item: item.name.lower()):
         name = path.name.lower()
-        if path.is_file() and name.startswith("claude-desktop-") and name.endswith(".mcpb"):
+        if path.is_file() and _has_name_part(name, "claude-desktop") and name.endswith(".mcpb"):
             manifest = _zip_json(path, "manifest.json")
             command = ((manifest.get("server") or {}).get("mcp_config") or {}).get("command", "")
             transport = "http" if "bridge" in command or "-http-" in name else "stdio"
             artifacts.append(
                 PackageArtifact(path, "Claude Desktop", "MCP extension", transport=transport)
             )
-        elif path.is_file() and name.startswith("claude-desktop-") and name.endswith(".plugin"):
+        elif path.is_file() and _has_name_part(name, "claude-desktop") and name.endswith(".plugin"):
             artifacts.append(PackageArtifact(path, "Claude Desktop", "skills plugin"))
-        elif path.is_file() and name.startswith("claude-code-") and name.endswith(".zip"):
+        elif path.is_file() and _has_name_part(name, "claude-code") and name.endswith(".zip"):
             plugin, marketplace = _plugin_identity(path, ".claude-plugin/marketplace.json")
             artifacts.append(
                 PackageArtifact(path, "Claude Code", "plugin marketplace", plugin, marketplace)
             )
-        elif path.is_file() and name.startswith("copilot-") and name.endswith(".zip"):
+        elif path.is_file() and _has_name_part(name, "copilot") and name.endswith(".zip"):
             manifest = _zip_json(path, "plugin.json")
             artifacts.append(
                 PackageArtifact(path, "GitHub Copilot", "plugin", manifest.get("name"))
             )
-        elif path.is_file() and name.startswith("codex-marketplace-") and name.endswith(".zip"):
+        elif path.is_file() and _has_name_part(name, "codex-marketplace") and name.endswith(".zip"):
             plugin, marketplace = _plugin_identity(path, ".agents/plugins/marketplace.json")
             artifacts.append(
                 PackageArtifact(path, "Codex", "plugin marketplace", plugin, marketplace)
             )
-        elif path.is_file() and name.startswith("universal-") and name.endswith(".zip"):
+        elif path.is_file() and _has_name_part(name, "universal") and name.endswith(".zip"):
             artifacts.append(PackageArtifact(path, "Universal", "archive"))
     return artifacts
 
 
 def _names(artifacts: list[PackageArtifact], target: str) -> list[str]:
     return [artifact.path.name for artifact in artifacts if artifact.target == target]
+
+
+CLAUDE_DESKTOP_CONNECTORS_STEP = (
+    "Open **Settings → Customize → Connectors**, choose **Your Connectors**, and change "
+    "the connector permission from **Needs Approval** to **Always allow**. Otherwise, "
+    "Claude Desktop asks you to confirm every action the connector performs."
+)
+
+CLAUDE_DESKTOP_CONNECTORS_STEP_HTML = (
+    "Open <strong>Settings → Customize → Connectors</strong>, choose "
+    "<strong>Your Connectors</strong>, and change the connector permission from "
+    "<strong>Needs Approval</strong> to <strong>Always allow</strong>. Otherwise, "
+    "Claude Desktop asks you to confirm every action the connector performs."
+)
 
 
 def render_markdown(artifacts: list[PackageArtifact]) -> str:
@@ -113,8 +131,9 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
                 f"4. Select `{item.path.name}` ({item.transport.upper()})."
                 for item in extensions
             ]
+        lines.append(f"5. {CLAUDE_DESKTOP_CONNECTORS_STEP}")
         lines.append(
-            "5. Fully quit Claude Desktop, including its system-tray icon, then reopen it."
+            "6. Fully quit Claude Desktop, including its system-tray icon, then reopen it."
         )
 
     claude_code = [item for item in artifacts if item.target == "Claude Code"]
@@ -202,6 +221,7 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
                 f"Select <code>{escape(item.path.name)}</code> ({escape(item.transport.upper())})."
                 for item in extensions
             ]
+        steps.append(CLAUDE_DESKTOP_CONNECTORS_STEP_HTML)
         steps.append("Fully quit Claude Desktop, including its system-tray icon, then reopen it.")
         sections.append("<section><h2>Claude Desktop</h2><ol>" + "".join(
             f"<li>{step}</li>" for step in steps
@@ -294,14 +314,15 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
 
 
 def write_guides(
-    packages_dir: Path, output_dir: Path | None = None
+    packages_dir: Path, output_dir: Path | None = None, name_suffix: str | None = None
 ) -> tuple[Path, Path, list[PackageArtifact]]:
     artifacts = scan(packages_dir)
     if not artifacts:
         raise AgentPackError(AP1003, f"no supported package artifacts found in: {packages_dir}")
     destination = (output_dir or packages_dir).resolve()
-    markdown_path = destination / "INSTALL.md"
-    html_path = destination / "INSTALL.html"
+    filename = f"INSTALL-{name_suffix}" if name_suffix else "INSTALL"
+    markdown_path = destination / f"{filename}.md"
+    html_path = destination / f"{filename}.html"
     write_text(markdown_path, render_markdown(artifacts))
     write_text(html_path, render_html(artifacts))
     return markdown_path, html_path, artifacts

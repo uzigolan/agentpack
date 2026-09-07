@@ -207,8 +207,7 @@ class CodexAdapter(TargetAdapter):
     def install_steps(self, package: AgentPackage) -> list[str]:  # noqa: ARG002
         plugin_name = package.metadata.name.lower().replace("_", "-").replace(".", "-")
         steps = [
-            "1. Extract `"
-            f"codex-marketplace-{package.metadata.version}.zip` from "
+            "1. Extract the `codex-marketplace-<transport>-<version>.zip` archive from "
             "`dist/packages/` into a folder.",
             "2. Click Codex's **Settings** gear, then choose **Codex Settings** to open the "
             "Settings UI.",

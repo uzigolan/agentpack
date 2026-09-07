@@ -16,7 +16,7 @@ from agentpack.core.fsutil import clean_dir, copy_tree, iter_files, write_json, 
 from agentpack.core.package_docs import write_guides
 from agentpack.core.registry import registry
 from agentpack.core.validator import validate
-from agentpack.models.package import AgentPackage, BuildResult
+from agentpack.models.package import AgentPackage, BuildResult, MCPServer, TransportType
 
 
 @dataclass
@@ -37,6 +37,46 @@ def _digest(path: Path) -> str:
         h.update(str(rel).replace("\\", "/").encode())
         h.update((path / rel).read_bytes())
     return h.hexdigest()
+
+
+def _safe_segment(value: str) -> str:
+    safe = "".join(char if char.isalnum() or char in ".-" else "-" for char in value.lower())
+    return safe.strip(".-") or "package"
+
+
+def _server_transport_label(server: MCPServer) -> str:
+    if not server.is_remote:
+        return TransportType.STDIO.value
+    if not server.endpoint:
+        return server.transport.value
+    hostname = server.endpoint.url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    safe_hostname = _safe_segment(hostname)
+    return f"{server.transport.value}-{safe_hostname or 'remote'}"
+
+
+def _package_transport_label(package: AgentPackage) -> str:
+    labels = sorted({_server_transport_label(server) for server in package.mcp_servers})
+    if not labels:
+        return "no-mcp"
+    if len(labels) == 1:
+        return labels[0]
+    return "mixed"
+
+
+def _archive_filename(
+    package: AgentPackage,
+    target: str,
+    *,
+    label: str | None = None,
+    suffix: str = ".zip",
+) -> str:
+    parts = [_safe_segment(target)]
+    if label:
+        parts.append(_safe_segment(label))
+    if suffix != ".mcpb":
+        parts.append(_package_transport_label(package))
+    parts.append(_safe_segment(package.metadata.version))
+    return "-".join(parts) + suffix
 
 
 def build(
@@ -100,17 +140,17 @@ def build(
 
         if archive:
             packages_dir = out_root / "packages"
-            # Archives are target-first so an artifact/project name does not leak
-            # into a client-facing filename.
             stem = name
-            version = package.metadata.version
             if result.archive_specs:
                 for spec in result.archive_specs:
                     src = final / spec.root
                     if spec.source_is_file:
                         if not src.is_file():
                             continue
-                        destination = packages_dir / (spec.filename or src.name)
+                        filename = spec.filename or _archive_filename(
+                            package, stem, label=spec.label, suffix=src.suffix
+                        )
+                        destination = packages_dir / filename
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(src, destination)
                         result.archives.append(destination)
@@ -118,10 +158,16 @@ def build(
                     if not src.is_dir():
                         continue
                     result.archives.append(
-                        zip_dir(src, packages_dir / f"{stem}-{spec.label}-{version}{spec.suffix}")
+                        zip_dir(
+                            src,
+                            packages_dir
+                            / _archive_filename(package, stem, label=spec.label, suffix=spec.suffix),
+                        )
                     )
             else:
-                result.archives.append(zip_dir(final, packages_dir / f"{stem}-{version}.zip"))
+                result.archives.append(
+                    zip_dir(final, packages_dir / _archive_filename(package, stem))
+                )
             entry["archives"] = [
                 str(a.relative_to(out_root)).replace("\\", "/") for a in result.archives
             ]
@@ -135,7 +181,10 @@ def build(
     if archive and results:
         # These recipient-facing guides inspect only the finished package files.
         # They intentionally do not inherit manifest/build options.
-        write_guides(out_root / "packages")
+        write_guides(
+            out_root / "packages",
+            name_suffix=f"{_package_transport_label(package)}-{_safe_segment(package.metadata.version)}",
+        )
 
     manifest = {
         "agentpackVersion": __version__,

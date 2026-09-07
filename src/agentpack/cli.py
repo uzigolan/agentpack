@@ -105,6 +105,10 @@ def init(
     package_version: Annotated[
         str, typer.Option("--version", help="Initial package version (default: 0.1.0).")
     ] = "0.1.0",
+    author_name: Annotated[
+        str,
+        typer.Option("--author-name", help="Initial metadata.authors[0].name value."),
+    ] = scaffold.DEFAULT_AUTHOR_NAME,
     example: Annotated[
         bool,
         typer.Option("--example", help="Also scaffold an example skill and MCP server."),
@@ -114,7 +118,13 @@ def init(
     package_name = name or (directory.resolve().name if directory is not None else Path.cwd().name)
     project_dir = directory or Path("artifacts") / package_name
     created = scaffold.init_project(
-        project_dir, package_name, file, example=example, output=output, version=package_version
+        project_dir,
+        package_name,
+        file,
+        example=example,
+        output=output,
+        version=package_version,
+        author_name=author_name,
     )
     if not created:
         typer.secho(

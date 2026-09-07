@@ -5,6 +5,8 @@ import zipfile
 from pathlib import Path
 
 from agentpack.core.builder import build
+from agentpack.core.diagnostics import Diagnostics
+from agentpack.core.loader import load_package
 from agentpack.models.package import BuildOptions, EnvVarSource, KnowledgeMode
 
 
@@ -325,9 +327,39 @@ def test_claude_desktop_archives_are_split_per_server_plus_skills(package, tmp_p
     summary = _build(package, tmp_path, archive=True)
     claude = next(r for r in summary.results if r.target == "claude-desktop")
     assert sorted(p.name for p in claude.archives) == [
-        "claude-desktop-cowork-plugin-0.1.0.plugin",
+        "claude-desktop-cowork-plugin-mixed-0.1.0.plugin",
         "claude-desktop-monitoring-http-mcp.example.com-0.1.0.mcpb",
         "claude-desktop-netops-stdio-0.1.0.mcpb",
+    ]
+
+
+def test_archive_name_describes_single_transport(project, tmp_path: Path):
+    http_package = load_package(project, Diagnostics())
+    http_server = next(server for server in http_package.mcp_servers if server.is_remote)
+    assert http_server.endpoint is not None
+    http_server.endpoint.url = "http://172.18.178.24/mcp"
+    http_package.mcp_servers = [http_server]
+    http_package.metadata.version = "0.27.0"
+    http_summary = build(
+        http_package, targets=["copilot"], output_dir=tmp_path / "http" / "dist", archive=True
+    )
+    assert [path.name for path in http_summary.results[0].archives] == [
+        "copilot-http-172.18.178.24-0.27.0.zip"
+    ]
+
+    stdio_package = load_package(project, Diagnostics())
+    stdio_package.mcp_servers = [
+        server for server in stdio_package.mcp_servers if not server.is_remote
+    ]
+    stdio_package.metadata.version = "0.27.0"
+    stdio_summary = build(
+        stdio_package,
+        targets=["copilot"],
+        output_dir=tmp_path / "stdio" / "dist",
+        archive=True,
+    )
+    assert [path.name for path in stdio_summary.results[0].archives] == [
+        "copilot-stdio-0.27.0.zip"
     ]
 
 
@@ -342,9 +374,9 @@ def test_packaging_clears_archives_from_the_previous_run(package, tmp_path: Path
     assert summary.ok
     assert not stale.exists()
     assert sorted(path.name for path in (output / "packages").iterdir()) == [
-        "INSTALL.html",
-        "INSTALL.md",
-        "universal-0.1.0.zip",
+        "INSTALL-mixed-0.1.0.html",
+        "INSTALL-mixed-0.1.0.md",
+        "universal-mixed-0.1.0.zip",
     ]
 
 

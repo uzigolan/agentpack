@@ -87,7 +87,7 @@ def test_package_writes_dist_next_to_the_manifest(tmp_path: Path, monkeypatch):
 
     result = runner.invoke(app, ["package", "-f", str(manifest)])
     assert result.exit_code == 0, result.output
-    assert (tmp_path / "proj" / "dist" / "packages" / "universal-3.2.1.zip").is_file()
+    assert (tmp_path / "proj" / "dist" / "packages" / "universal-stdio-3.2.1.zip").is_file()
     assert not (tmp_path / "dist").exists()
 
 
@@ -109,6 +109,29 @@ def test_project_option_still_works(tmp_path: Path):
     make_project(tmp_path / "proj")
     result = runner.invoke(app, ["validate", "-p", str(tmp_path / "proj")])
     assert result.exit_code == 0, result.output
+
+
+def test_init_sets_default_and_custom_author(tmp_path: Path):
+    default_project = tmp_path / "default-author"
+    result = runner.invoke(app, ["init", str(default_project), "--name", "default-author"])
+    assert result.exit_code == 0, result.output
+    default_manifest = (default_project / "agentpack.yaml").read_text()
+    assert "- name: Uzi Golan" in default_manifest
+
+    custom_project = tmp_path / "custom-author"
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            str(custom_project),
+            "--name",
+            "custom-author",
+            "--author-name",
+            "RADVIEW",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "- name: RADVIEW" in (custom_project / "agentpack.yaml").read_text()
 
 
 def test_pack_import_copies_portable_runtime_skills_and_mcp(tmp_path: Path):
@@ -236,6 +259,6 @@ def test_package_refreshes_imported_portable_payload(tmp_path: Path, monkeypatch
     packaged = runner.invoke(app, ["package", "-n", "portable-refresh", "--target", "universal"])
     assert packaged.exit_code == 0, packaged.output
 
-    archive_path = project / "dist" / "packages" / "universal-0.1.0.zip"
+    archive_path = project / "dist" / "packages" / "universal-stdio-0.1.0.zip"
     with zipfile.ZipFile(archive_path) as archive:
         assert archive.read("config/knowledge.sqlite") == b"new database"

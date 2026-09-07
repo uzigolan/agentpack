@@ -42,6 +42,10 @@ def test_target_install_writes_guides_from_package_files_only(tmp_path: Path):
     html = (packages / "INSTALL.html").read_text(encoding="utf-8")
     assert "demo-plugin@demo-marketplace" in markdown
     assert "MCP extension (HTTP)" in markdown
+    assert "Settings → Customize → Connectors" in markdown
+    assert "Needs Approval" in markdown
+    assert "Always allow" in markdown
     assert "agentpack" not in markdown.lower()
     assert html.count("<h2>Available packages</h2>") == 1
     assert "demo-plugin@demo-marketplace" in html
+    assert "Settings → Customize → Connectors" in html
