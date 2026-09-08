@@ -66,6 +66,11 @@ def scan(packages_dir: Path) -> list[PackageArtifact]:
             artifacts.append(
                 PackageArtifact(path, "Claude Code", "plugin marketplace", plugin, marketplace)
             )
+        elif path.is_file() and _has_name_part(name, "copilot-cli") and name.endswith(".zip"):
+            manifest = _zip_json(path, "plugin.json")
+            artifacts.append(
+                PackageArtifact(path, "GitHub Copilot CLI", "plugin", manifest.get("name"))
+            )
         elif path.is_file() and _has_name_part(name, "copilot") and name.endswith(".zip"):
             manifest = _zip_json(path, "plugin.json")
             artifacts.append(
@@ -163,6 +168,17 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
             "3. Select the extracted folder, install the plugin, then reload the client.",
         ]
 
+    copilot_cli = [item for item in artifacts if item.target == "GitHub Copilot CLI"]
+    if copilot_cli:
+        lines += [
+            "",
+            "## GitHub Copilot CLI",
+            "",
+            f"1. Extract `{copilot_cli[0].path.name}` to a folder.",
+            "2. In PowerShell, run `copilot plugin install <absolute path to the extracted folder>`.",
+            "3. Run `copilot plugin list` to confirm installation, then start a new Copilot CLI session.",
+        ]
+
     codex = [item for item in artifacts if item.target == "Codex"]
     if codex:
         item = codex[0]
@@ -251,6 +267,17 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
             "</strong>.</li>"
             "<li>Select the extracted folder, install the plugin, then reload the client.</li>"
             "</ol></section>"
+        )
+
+    copilot_cli = [item for item in artifacts if item.target == "GitHub Copilot CLI"]
+    if copilot_cli:
+        sections.append(
+            "<section><h2>GitHub Copilot CLI</h2><ol>"
+            f"<li>Extract <code>{escape(copilot_cli[0].path.name)}</code> to a folder.</li>"
+            "<li>In PowerShell, run <code>copilot plugin install &lt;absolute path to the "
+            "extracted folder&gt;</code>.</li>"
+            "<li>Run <code>copilot plugin list</code> to confirm installation, then start a "
+            "new Copilot CLI session.</li></ol></section>"
         )
 
     codex = [item for item in artifacts if item.target == "Codex"]

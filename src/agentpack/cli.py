@@ -41,6 +41,30 @@ FileOpt = Annotated[
 TargetOpt = Annotated[
     list[str] | None, typer.Option("--target", "-t", help="Target to build. Repeatable.")
 ]
+PlatformOpt = Annotated[
+    str,
+    typer.Option(
+        "--platform",
+        help="Default package platform: windows or linux. Explicit --target values take precedence.",
+    ),
+]
+
+_PACKAGE_TARGETS = {
+    "windows": (
+        "universal-win",
+        "claude-desktop-win",
+        "claude-code-win",
+        "copilot-win",
+        "copilot-cli-win",
+        "codex-win",
+    ),
+    "linux": (
+        "universal-linux",
+        "claude-code-cli-linux",
+        "copilot-cli-linux",
+        "codex-cli-linux",
+    ),
+}
 PackageNameOpt = Annotated[
     str | None,
     typer.Option("--name", "-n", help="Package workspace name under artifacts/."),
@@ -292,6 +316,7 @@ def package_cmd(
     file: FileOpt = None,
     package_name: PackageNameOpt = None,
     target: TargetOpt = None,
+    platform: PlatformOpt = "windows",
     output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
     strict: Annotated[bool, typer.Option("--strict", help="Fail on any warning.")] = False,
     knowledge: Annotated[
@@ -317,11 +342,15 @@ def package_cmd(
     ] = False,
 ) -> None:
     """Build and emit distributable archives (dist/packages/)."""
+    if platform not in _PACKAGE_TARGETS:
+        typer.secho("--platform must be 'windows' or 'linux'.", fg=typer.colors.RED)
+        raise typer.Exit(code=2)
+    selected_targets = list(target) if target else list(_PACKAGE_TARGETS[platform])
     build(
         project=project,
         file=file,
         package_name=package_name,
-        target=target,
+        target=selected_targets,
         output=output,
         strict=strict,
         knowledge=knowledge,

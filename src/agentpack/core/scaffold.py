@@ -26,6 +26,7 @@ targets:
   - claude-desktop
   - claude-code
   - copilot
+  - copilot-cli
   - codex
 
 skills:
@@ -116,6 +117,7 @@ targets:
   - claude-desktop
   - claude-code
   - copilot
+  - copilot-cli
   - codex
 
 # Register capabilities with:

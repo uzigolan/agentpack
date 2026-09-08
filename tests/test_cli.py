@@ -87,7 +87,9 @@ def test_package_writes_dist_next_to_the_manifest(tmp_path: Path, monkeypatch):
 
     result = runner.invoke(app, ["package", "-f", str(manifest)])
     assert result.exit_code == 0, result.output
-    assert (tmp_path / "proj" / "dist" / "packages" / "universal-stdio-3.2.1.zip").is_file()
+    assert (
+        tmp_path / "proj" / "dist" / "packages" / "universal-win-stdio-3.2.1.zip"
+    ).is_file()
     assert not (tmp_path / "dist").exists()
 
 
@@ -117,6 +119,7 @@ def test_init_sets_default_and_custom_author(tmp_path: Path):
     assert result.exit_code == 0, result.output
     default_manifest = (default_project / "agentpack.yaml").read_text()
     assert "- name: Uzi Golan" in default_manifest
+    assert "- copilot-cli" in default_manifest
 
     custom_project = tmp_path / "custom-author"
     result = runner.invoke(

@@ -8,6 +8,7 @@ symlinks / traversal are rejected.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import time
 import zipfile
@@ -22,6 +23,16 @@ from agentpack.core.diagnostics import AP1006, AP3001, AgentPackError
 ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 
 IGNORED_NAMES = {".git", ".DS_Store", "__pycache__", ".venv", "node_modules"}
+
+
+def _native_copy_path(path: Path) -> str:
+    """Allow file copies whose Windows path is longer than MAX_PATH."""
+    value = str(path.resolve())
+    if os.name != "nt" or value.startswith("\\\\?\\"):
+        return value
+    if value.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + value[2:]
+    return "\\\\?\\" + value
 
 
 def ensure_inside(root: Path, candidate: Path) -> Path:
@@ -56,7 +67,13 @@ def copy_tree(src: Path, dst: Path, *, exclude: Iterable[str] = ()) -> list[str]
             continue
         target = dst / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src / rel, target)
+        try:
+            shutil.copy2(_native_copy_path(src / rel), _native_copy_path(target))
+        except OSError as exc:
+            raise AgentPackError(
+                AP3001,
+                f"could not copy packaged file '{src / rel}' to '{target}': {exc}",
+            ) from exc
         written.append(posix)
     return written
 
@@ -97,9 +114,9 @@ def remove_tree(path: Path) -> None:
         if not path.exists():
             break
         try:
-            shutil.rmtree(path)
+            shutil.rmtree(_native_copy_path(path))
             break
-        except PermissionError as exc:
+        except OSError as exc:
             if attempt + 1 == attempts:
                 raise AgentPackError(
                     AP3001,

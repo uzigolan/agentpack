@@ -7,7 +7,7 @@ from pathlib import Path
 from agentpack.core.builder import build
 from agentpack.core.diagnostics import Diagnostics
 from agentpack.core.loader import load_package
-from agentpack.models.package import BuildOptions, EnvVarSource, KnowledgeMode
+from agentpack.models.package import BuildOptions, EnvVarSource, KnowledgeMode, PortablePayload
 
 
 def _skill_zip_names(zip_path: Path) -> set[str]:
@@ -77,6 +77,22 @@ def test_copilot_plugin_has_a_manifest_and_mcp_config(package, tmp_path: Path):
     assert (plugin.parents[1] / ".claude-plugin" / "plugin.json").is_file()
     plugin_mcp = json.loads((plugin.parents[1] / ".mcp.json").read_text(encoding="utf-8"))
     assert "mcpServers" in plugin_mcp
+
+
+def test_copilot_cli_plugin_uses_the_cli_plugin_root(package, tmp_path: Path):
+    payload = tmp_path / "payload"
+    (payload / "runtime").mkdir(parents=True)
+    (payload / "runtime" / "server.exe").write_bytes(b"runtime")
+    package.portable_payload = PortablePayload(source_dir=payload)
+    stdio_server = next(server for server in package.mcp_servers if not server.is_remote)
+    assert stdio_server.command is not None
+    stdio_server.command.executable = "${packageRoot}/runtime/server.exe"
+    summary = build(package, targets=["copilot-cli"], output_dir=tmp_path / "dist")
+    assert summary.ok
+    output = tmp_path / "dist" / "build" / "copilot-cli"
+    assert json.loads((output / "plugin.json").read_text(encoding="utf-8"))["mcpServers"] == ".mcp.json"
+    mcp = json.loads((output / ".mcp.json").read_text(encoding="utf-8"))
+    assert mcp["mcpServers"]["netops"]["command"].startswith("${PLUGIN_ROOT}/")
 
 
 def test_no_secret_value_leaks_into_any_artifact(package, tmp_path: Path):
@@ -240,6 +256,29 @@ def test_codex_emits_installable_plugin(package, tmp_path: Path):
         ).read_text(encoding="utf-8")
     )
     assert marketplace["plugins"][0]["source"]["path"] == "./plugins/network-operations"
+
+
+def test_linux_platform_target_uses_linux_runtime_path(package, tmp_path: Path):
+    stdio_server = next(server for server in package.mcp_servers if not server.is_remote)
+    assert stdio_server.command is not None
+    stdio_server.command.executable = (
+        "${packageRoot}/runtime/windows-amd64/rad-mcp-runtime.exe"
+    )
+    build(package, targets=["codex-cli-linux"], output_dir=tmp_path / "dist")
+    config = json.loads(
+        (
+            tmp_path
+            / "dist"
+            / "build"
+            / "codex-cli-linux"
+            / "plugins"
+            / "network-operations"
+            / ".mcp.json"
+        ).read_text(encoding="utf-8")
+    )
+    executable = config["mcpServers"]["netops"]["command"]
+    assert "runtime/linux-amd64/" in executable
+    assert not executable.endswith(".exe")
 
 
 def test_codex_uses_an_environment_variable_for_remote_bearer_tokens(package, tmp_path: Path):

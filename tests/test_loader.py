@@ -94,6 +94,14 @@ def test_legacy_copilot_targets_load_as_the_generic_plugin(project: Path):
     assert len([item for item in diags.warnings if item.code == "AP2001"]) == 2
 
 
+def test_platform_targets_are_known():
+    from agentpack.core.registry import registry
+
+    assert registry.get("claude-code-cli-linux") is not None
+    assert registry.get("copilot-cli-linux") is not None
+    assert registry.get("codex-win") is not None
+
+
 def test_path_traversal_is_rejected(tmp_path: Path):
     with pytest.raises(AgentPackError) as exc:
         ensure_inside(tmp_path, tmp_path / ".." / "escape")

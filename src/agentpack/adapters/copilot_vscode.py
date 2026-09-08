@@ -43,9 +43,10 @@ def build_mcp_json(adapter: TargetAdapter, package: AgentPackage) -> dict:
     inputs: list[dict] = []
     servers: dict[str, dict] = {}
     embedded_bearer_token = package.options_for("copilot").get("_embedded_bearer_token")
-    package_root = (
-        "${CLAUDE_PLUGIN_ROOT}" if adapter.name == "copilot" else "${workspaceFolder}"
-    )
+    package_root = {
+        "copilot": "${CLAUDE_PLUGIN_ROOT}",
+        "copilot-cli": "${PLUGIN_ROOT}",
+    }.get(adapter.name, "${workspaceFolder}")
 
     for server in package.mcp_servers:
         entry: dict
@@ -267,4 +268,32 @@ class CopilotPluginAdapter(CopilotVSCodeAdapter):
             "4. In the added plugin row, click **Install** to activate it.",
             "5. Run **Developer: Reload Window** from the VS Code Command Palette "
             "(`Ctrl+Shift+P`), then start a new Copilot session and verify its tools and skills.",
+        ]
+
+
+class CopilotCLIAdapter(CopilotPluginAdapter):
+    """Copilot CLI plugin with its documented plugin-root runtime placeholder."""
+
+    name = "copilot-cli"
+    adapter_version = 1
+    _client = "GitHub Copilot CLI"
+
+    def capabilities(self) -> TargetCapabilities:
+        caps = super().capabilities()
+        return caps.model_copy(
+            update={
+                "notes": (
+                    "A GitHub Copilot CLI plugin. Install its extracted directory with "
+                    "`copilot plugin install <path>` or place it in a plugin marketplace."
+                )
+            }
+        )
+
+    def install_steps(self, package: AgentPackage) -> list[str]:
+        return [
+            "1. Extract the `copilot-cli-<transport>-<version>.zip` archive from "
+            "`dist/packages/` into a folder.",
+            "2. In PowerShell, run `copilot plugin install <absolute path to the extracted folder>`.",
+            "3. Run `copilot plugin list` to confirm the plugin is installed, then start a new "
+            "Copilot CLI session.",
         ]

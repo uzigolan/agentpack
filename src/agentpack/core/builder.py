@@ -12,7 +12,15 @@ from agentpack import __version__
 from agentpack.adapters.base import TargetAdapter
 from agentpack.core import install_guide
 from agentpack.core.diagnostics import AP2001, AP3001, Diagnostics
-from agentpack.core.fsutil import clean_dir, copy_tree, iter_files, write_json, write_text, zip_dir
+from agentpack.core.fsutil import (
+    clean_dir,
+    copy_tree,
+    iter_files,
+    remove_tree,
+    write_json,
+    write_text,
+    zip_dir,
+)
 from agentpack.core.package_docs import write_guides
 from agentpack.core.registry import registry
 from agentpack.core.validator import validate
@@ -114,7 +122,8 @@ def build(
             continue
 
         # Build into a temp dir so a failed target leaves no misleading output.
-        with tempfile.TemporaryDirectory(prefix=f"agentpack-{name}-") as tmp:
+        tmp = Path(tempfile.mkdtemp(prefix=f"agentpack-{name}-"))
+        try:
             staging = Path(tmp) / name
             staging.mkdir(parents=True)
             try:
@@ -126,6 +135,8 @@ def build(
             final = build_root / name
             clean_dir(final)
             copy_tree(staging, final)
+        finally:
+            remove_tree(tmp)
 
         result.output_dir = final
         result.files = [str(p).replace("\\", "/") for p in iter_files(final)]
