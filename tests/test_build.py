@@ -239,6 +239,33 @@ def test_claude_code_uses_mcpservers_key(package, tmp_path: Path):
     assert config["mcpServers"]["monitoring"]["url"] == "https://mcp.example.com/mcp"
 
 
+def test_claude_code_plugin_root_is_a_local_marketplace(package, tmp_path: Path):
+    build(
+        package,
+        targets=["claude-code-cli-linux"],
+        output_dir=tmp_path / "dist",
+        archive=True,
+    )
+    marketplace = json.loads(
+        (
+            tmp_path
+            / "dist"
+            / "build"
+            / "claude-code-cli-linux"
+            / "network-operations"
+            / ".claude-plugin"
+            / "marketplace.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert marketplace["plugins"][0]["source"] == "."
+    archives = list(
+        (tmp_path / "dist" / "packages").glob("claude-code-cli-linux-*.zip")
+    )
+    assert len(archives) == 1
+    with zipfile.ZipFile(archives[0]) as archive:
+        assert "network-operations/.claude-plugin/marketplace.json" in archive.namelist()
+
+
 def test_codex_emits_installable_plugin(package, tmp_path: Path):
     _build(package, tmp_path)
     plugin_dir = tmp_path / "dist" / "build" / "codex" / "plugins" / "network-operations"

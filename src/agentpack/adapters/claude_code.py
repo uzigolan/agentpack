@@ -131,20 +131,22 @@ class ClaudeCodeAdapter(TargetAdapter):
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(asset.source.read_bytes())
 
+        marketplace = {
+            "name": f"{meta.name}-marketplace",
+            "owner": {"name": meta.author_name},
+            "plugins": [
+                {
+                    "name": meta.name,
+                    "source": f"./{meta.name}",
+                    "description": meta.description,
+                    "version": meta.version,
+                }
+            ],
+        }
+        write_json(output_dir / ".claude-plugin" / "marketplace.json", marketplace)
         write_json(
-            output_dir / ".claude-plugin" / "marketplace.json",
-            {
-                "name": f"{meta.name}-marketplace",
-                "owner": {"name": meta.author_name},
-                "plugins": [
-                    {
-                        "name": meta.name,
-                        "source": f"./{meta.name}",
-                        "description": meta.description,
-                        "version": meta.version,
-                    }
-                ],
-            },
+            plugin_dir / ".claude-plugin" / "marketplace.json",
+            {**marketplace, "plugins": [{**marketplace["plugins"][0], "source": "."}]},
         )
 
         write_text(output_dir / "README.md", self.readme(package))
