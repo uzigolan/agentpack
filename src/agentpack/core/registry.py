@@ -27,15 +27,15 @@ _BUILTINS: dict[str, tuple[str, str]] = {
 
 _PLATFORM_TARGETS: dict[str, tuple[str, str]] = {
     "universal-win": ("universal", "windows-amd64"),
-    "universal-linux": ("universal", "linux-amd64"),
+    "universal-linux": ("universal", "linux-x86_64"),
     "claude-desktop-win": ("claude-desktop", "windows-amd64"),
     "claude-code-win": ("claude-code", "windows-amd64"),
-    "claude-code-cli-linux": ("claude-code", "linux-amd64"),
+    "claude-code-cli-linux": ("claude-code", "linux-x86_64"),
     "copilot-win": ("copilot", "windows-amd64"),
     "copilot-cli-win": ("copilot-cli", "windows-amd64"),
-    "copilot-cli-linux": ("copilot-cli", "linux-amd64"),
+    "copilot-cli-linux": ("copilot-cli", "linux-x86_64"),
     "codex-win": ("codex", "windows-amd64"),
-    "codex-cli-linux": ("codex", "linux-amd64"),
+    "codex-cli-linux": ("codex", "linux-x86_64"),
 }
 
 
@@ -66,7 +66,7 @@ class _PlatformAdapter(TargetAdapter):
             executable = executable.replace(
                 "\\runtime\\windows-amd64\\", f"\\runtime\\{self._runtime}\\"
             )
-            if self._runtime == "linux-amd64" and executable.endswith(".exe"):
+            if self._runtime == "linux-x86_64" and executable.endswith(".exe"):
                 executable = executable[:-4]
             server.command = server.command.model_copy(update={"executable": executable})
         return self._base.build(package, output_dir)

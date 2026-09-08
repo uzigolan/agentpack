@@ -277,7 +277,7 @@ def test_linux_platform_target_uses_linux_runtime_path(package, tmp_path: Path):
         ).read_text(encoding="utf-8")
     )
     executable = config["mcpServers"]["netops"]["command"]
-    assert "runtime/linux-amd64/" in executable
+    assert "runtime/linux-x86_64/" in executable
     assert not executable.endswith(".exe")
 
 
