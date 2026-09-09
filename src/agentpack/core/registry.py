@@ -12,6 +12,7 @@ from importlib.metadata import entry_points
 from typing import TYPE_CHECKING
 
 from agentpack.adapters.base import TargetAdapter
+from agentpack.core.fsutil import write_text
 
 if TYPE_CHECKING:
     from agentpack.models.package import AgentPackage
@@ -53,6 +54,22 @@ class _PlatformAdapter(TargetAdapter):
         return self._base.validate(package)
 
     def install_steps(self, package: AgentPackage):
+        if self._runtime == "linux-x86_64" and self._base.name == "claude-code":
+            plugin = package.metadata.name
+            return [
+                "Add this directory as a local marketplace, then install and verify the plugin:",
+                "",
+                "```bash",
+                f"chmod +x <marketplace-directory>/{plugin}/runtime/linux-x86_64/rad-mcp-runtime",
+                "claude plugin marketplace add <absolute path to marketplace-directory>",
+                f"claude plugin install {plugin}@{plugin}-marketplace",
+                "claude plugin list",
+                "claude mcp list",
+                "claude",
+                "```",
+                "",
+                "Start a new Claude Code session after installation so it loads the plugin and reconnects to its MCP server.",
+            ]
         return self._base.install_steps(package)
 
     def build(self, package: AgentPackage, output_dir):
@@ -69,7 +86,10 @@ class _PlatformAdapter(TargetAdapter):
             if self._runtime == "linux-x86_64" and executable.endswith(".exe"):
                 executable = executable[:-4]
             server.command = server.command.model_copy(update={"executable": executable})
-        return self._base.build(package, output_dir)
+        result = self._base.build(package, output_dir)
+        if self._runtime == "linux-x86_64" and self._base.name == "claude-code":
+            write_text(output_dir / "README.md", self.readme(package))
+        return result
 
 
 class AdapterRegistry:

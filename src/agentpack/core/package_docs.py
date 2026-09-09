@@ -76,7 +76,7 @@ def scan(packages_dir: Path) -> list[PackageArtifact]:
             artifacts.append(
                 PackageArtifact(path, "GitHub Copilot", "plugin", manifest.get("name"))
             )
-        elif path.is_file() and _has_name_part(name, "codex-marketplace") and name.endswith(".zip"):
+        elif path.is_file() and _has_name_part(name, "codex") and name.endswith(".zip"):
             plugin, marketplace = _plugin_identity(path, ".agents/plugins/marketplace.json")
             artifacts.append(
                 PackageArtifact(path, "Codex", "plugin marketplace", plugin, marketplace)

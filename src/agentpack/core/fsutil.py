@@ -89,14 +89,18 @@ def write_json(path: Path, data: Any) -> str:
 
 
 def zip_dir(source: Path, archive: Path, *, arc_root: str | None = None) -> Path:
-    """Deterministic zip: sorted entries, fixed timestamps, stored permissions."""
+    """Deterministic zip: sorted entries, fixed timestamps, preserved permissions."""
     archive.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for rel in iter_files(source):
             posix = str(rel).replace("\\", "/")
             arcname = f"{arc_root}/{posix}" if arc_root else posix
             info = zipfile.ZipInfo(arcname, date_time=ZIP_EPOCH)
-            info.external_attr = 0o644 << 16
+            info.create_system = 3
+            mode = (source / rel).stat().st_mode
+            if "/runtime/linux-" in f"/{posix}":
+                mode |= 0o111
+            info.external_attr = mode << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             zf.writestr(info, (source / rel).read_bytes())
     return archive

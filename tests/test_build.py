@@ -267,6 +267,17 @@ def test_claude_code_plugin_root_is_a_local_marketplace(package, tmp_path: Path)
         assert ".claude-plugin/marketplace.json" not in archive.namelist()
 
 
+def test_claude_linux_readme_has_cli_install_and_reconnect_steps(package, tmp_path: Path):
+    build(package, targets=["claude-code-cli-linux"], output_dir=tmp_path / "dist")
+    readme = (
+        tmp_path / "dist" / "build" / "claude-code-cli-linux" / "README.md"
+    ).read_text(encoding="utf-8")
+    assert "claude plugin marketplace add" in readme
+    assert "claude plugin install" in readme
+    assert "claude mcp list" in readme
+    assert "Start a new Claude Code session" in readme
+
+
 def test_codex_emits_installable_plugin(package, tmp_path: Path):
     _build(package, tmp_path)
     plugin_dir = tmp_path / "dist" / "build" / "codex" / "plugins" / "network-operations"
@@ -287,12 +298,23 @@ def test_codex_emits_installable_plugin(package, tmp_path: Path):
 
 
 def test_linux_platform_target_uses_linux_runtime_path(package, tmp_path: Path):
+    payload = tmp_path / "payload"
+    runtime = payload / "runtime" / "linux-x86_64" / "rad-mcp-runtime"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_bytes(b"runtime")
+    runtime.chmod(0o755)
+    package.portable_payload = PortablePayload(source_dir=payload)
     stdio_server = next(server for server in package.mcp_servers if not server.is_remote)
     assert stdio_server.command is not None
     stdio_server.command.executable = (
         "${packageRoot}/runtime/windows-amd64/rad-mcp-runtime.exe"
     )
-    build(package, targets=["codex-cli-linux"], output_dir=tmp_path / "dist")
+    build(
+        package,
+        targets=["codex-cli-linux"],
+        output_dir=tmp_path / "dist",
+        archive=True,
+    )
     config = json.loads(
         (
             tmp_path
@@ -307,6 +329,12 @@ def test_linux_platform_target_uses_linux_runtime_path(package, tmp_path: Path):
     executable = config["mcpServers"]["netops"]["command"]
     assert "runtime/linux-x86_64/" in executable
     assert not executable.endswith(".exe")
+    archive = next((tmp_path / "dist" / "packages").glob("codex-cli-linux-*.zip"))
+    with zipfile.ZipFile(archive) as zf:
+        runtime_info = zf.getinfo(
+            "plugins/network-operations/runtime/linux-x86_64/rad-mcp-runtime"
+        )
+    assert runtime_info.external_attr >> 16 & 0o111
 
 
 def test_codex_uses_an_environment_variable_for_remote_bearer_tokens(package, tmp_path: Path):
