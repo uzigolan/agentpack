@@ -25,7 +25,11 @@ class PackageArtifact:
 def _zip_json(path: Path, member: str) -> dict:
     try:
         with zipfile.ZipFile(path) as archive:
-            return json.loads(archive.read(member).decode("utf-8"))
+            members = archive.namelist()
+            matched = member if member in members else next(
+                (name for name in members if name.endswith(f"/{member}")), None
+            )
+            return json.loads(archive.read(matched).decode("utf-8")) if matched else {}
     except (KeyError, OSError, json.JSONDecodeError, zipfile.BadZipFile):
         return {}
 
@@ -175,8 +179,12 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
             "## GitHub Copilot CLI",
             "",
             f"1. Extract `{copilot_cli[0].path.name}` to a folder.",
-            "2. In PowerShell, run `copilot plugin install <absolute path to the extracted folder>`.",
-            "3. Run `copilot plugin list` to confirm installation, then start a new Copilot CLI session.",
+            "2. To replace an older plugin, close active Copilot and VS Code sessions, then run "
+            "`copilot plugin uninstall <old-plugin>` in PowerShell.",
+            "3. Run `copilot plugin install <absolute path to the extracted folder>`.",
+            "4. Run `copilot plugin list` to confirm installation, then start a new Copilot CLI session.",
+            "5. If uninstall reports that the plugin directory is in use, close all Copilot and "
+            "VS Code sessions, then retry the uninstall command.",
         ]
 
     codex = [item for item in artifacts if item.target == "Codex"]
@@ -274,10 +282,14 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
         sections.append(
             "<section><h2>GitHub Copilot CLI</h2><ol>"
             f"<li>Extract <code>{escape(copilot_cli[0].path.name)}</code> to a folder.</li>"
-            "<li>In PowerShell, run <code>copilot plugin install &lt;absolute path to the "
+            "<li>To replace an older plugin, close active Copilot and VS Code sessions, then run "
+            "<code>copilot plugin uninstall &lt;old-plugin&gt;</code> in PowerShell.</li>"
+            "<li>Run <code>copilot plugin install &lt;absolute path to the "
             "extracted folder&gt;</code>.</li>"
             "<li>Run <code>copilot plugin list</code> to confirm installation, then start a "
-            "new Copilot CLI session.</li></ol></section>"
+            "new Copilot CLI session.</li>"
+            "<li>If uninstall reports that the plugin directory is in use, close all Copilot and "
+            "VS Code sessions, then retry the uninstall command.</li></ol></section>"
         )
 
     codex = [item for item in artifacts if item.target == "Codex"]

@@ -48,8 +48,12 @@ def test_target_install_writes_guides_from_package_files_only(tmp_path: Path):
     assert "Always allow" in markdown
     assert "GitHub Copilot CLI" in markdown
     assert "copilot plugin install" in markdown
+    assert "copilot plugin uninstall <old-plugin>" in markdown
+    assert "plugin directory is in use" in markdown
     assert "agentpack" not in markdown.lower()
     assert html.count("<h2>Available packages</h2>") == 1
     assert "demo-plugin@demo-marketplace" in html
     assert "Settings → Customize → Connectors" in html
     assert "GitHub Copilot CLI" in html
+    assert "copilot plugin uninstall &lt;old-plugin&gt;" in html
+    assert "plugin directory is in use" in html

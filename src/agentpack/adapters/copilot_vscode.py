@@ -19,6 +19,7 @@ from agentpack.adapters.base import TargetAdapter
 from agentpack.core.fsutil import write_json, write_text
 from agentpack.models.package import (
     AgentPackage,
+    ArchiveSpec,
     ArtifactType,
     BuildResult,
     EnvVar,
@@ -255,7 +256,10 @@ class CopilotPluginAdapter(CopilotVSCodeAdapter):
                 dest.write_bytes(asset.source.read_bytes())
         write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(
-            target=self.name, output_dir=output_dir, artifact_type=ArtifactType.PLUGIN
+            target=self.name,
+            output_dir=output_dir,
+            artifact_type=ArtifactType.PLUGIN,
+            archive_specs=[ArchiveSpec(root=".", label="", arc_root=package.metadata.name)],
         )
 
     def install_steps(self, package: AgentPackage) -> list[str]:

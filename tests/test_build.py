@@ -95,6 +95,14 @@ def test_copilot_cli_plugin_uses_the_cli_plugin_root(package, tmp_path: Path):
     assert mcp["mcpServers"]["netops"]["command"].startswith("${PLUGIN_ROOT}/")
 
 
+def test_copilot_cli_archive_extracts_into_one_package_directory(package, tmp_path: Path):
+    build(package, targets=["copilot-cli-win"], output_dir=tmp_path / "dist", archive=True)
+    archive = next((tmp_path / "dist" / "packages").glob("copilot-cli-win-*.zip"))
+    with zipfile.ZipFile(archive) as contents:
+        assert "network-operations/plugin.json" in contents.namelist()
+        assert "plugin.json" not in contents.namelist()
+
+
 def test_no_secret_value_leaks_into_any_artifact(package, tmp_path: Path):
     package.mcp_servers[1].environment["NETOPS_TOKEN"].description = "token"
     _build(package, tmp_path)
@@ -313,6 +321,14 @@ def test_codex_emits_installable_plugin(package, tmp_path: Path):
     assert marketplace["plugins"][0]["source"]["path"] == "./plugins/network-operations"
 
 
+def test_codex_archive_extracts_into_one_package_directory(package, tmp_path: Path):
+    build(package, targets=["codex-win"], output_dir=tmp_path / "dist", archive=True)
+    archive = next((tmp_path / "dist" / "packages").glob("codex-win-marketplace-*.zip"))
+    with zipfile.ZipFile(archive) as contents:
+        assert "network-operations/.agents/plugins/marketplace.json" in contents.namelist()
+        assert ".agents/plugins/marketplace.json" not in contents.namelist()
+
+
 def test_linux_platform_target_uses_linux_runtime_path(package, tmp_path: Path):
     payload = tmp_path / "payload"
     runtime = payload / "runtime" / "linux-x86_64" / "rad-mcp-runtime"
@@ -348,7 +364,8 @@ def test_linux_platform_target_uses_linux_runtime_path(package, tmp_path: Path):
     archive = next((tmp_path / "dist" / "packages").glob("codex-cli-linux-*.zip"))
     with zipfile.ZipFile(archive) as zf:
         runtime_info = zf.getinfo(
-            "plugins/network-operations/runtime/linux-x86_64/rad-mcp-runtime"
+            "network-operations/plugins/network-operations/runtime/linux-x86_64/"
+            "rad-mcp-runtime"
         )
     assert runtime_info.external_attr >> 16 & 0o111
 
