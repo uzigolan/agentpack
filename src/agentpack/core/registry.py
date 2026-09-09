@@ -54,13 +54,16 @@ class _PlatformAdapter(TargetAdapter):
         return self._base.validate(package)
 
     def install_steps(self, package: AgentPackage):
-        if self._runtime == "linux-x86_64" and self._base.name == "claude-code":
+        if self._base.name == "claude-code":
             plugin = package.metadata.name
-            return [
-                "Add this directory as a local marketplace, then install and verify the plugin:",
+            platform = "Linux" if self._runtime == "linux-x86_64" else "Windows"
+            steps = [
+                f"Use Claude Code's {platform} command line to replace an older plugin, then install and verify this one:",
                 "",
                 "```bash",
-                f"chmod +x <marketplace-directory>/{plugin}/runtime/linux-x86_64/rad-mcp-runtime",
+                "claude plugin list",
+                "claude plugin uninstall <old-plugin>@<old-marketplace>",
+                "claude plugin marketplace remove <old-marketplace>",
                 "claude plugin marketplace add <absolute path to marketplace-directory>",
                 f"claude plugin install {plugin}@{plugin}-marketplace",
                 "claude plugin list",
@@ -68,7 +71,40 @@ class _PlatformAdapter(TargetAdapter):
                 "claude",
                 "```",
                 "",
+                "Run the uninstall and marketplace removal commands only when replacing an older plugin. "
                 "Start a new Claude Code session after installation so it loads the plugin and reconnects to its MCP server.",
+            ]
+            if self._runtime == "linux-x86_64":
+                steps[3:3] = [
+                    f"chmod +x <marketplace-directory>/{plugin}/runtime/linux-x86_64/rad-mcp-runtime",
+                ]
+            return steps
+        if self._base.name == "copilot-cli":
+            return [
+                "Use the GitHub Copilot CLI to replace an older plugin, then install and verify this one:",
+                "",
+                "```bash",
+                "copilot plugin list",
+                "copilot plugin uninstall <old-plugin>",
+                "copilot plugin install <absolute path to the extracted folder>",
+                "copilot plugin list",
+                "```",
+                "",
+                "Run the uninstall command only when replacing an older plugin, then start a new Copilot CLI session.",
+            ]
+        if self._base.name == "codex":
+            plugin = package.metadata.name.lower().replace("_", "-").replace(".", "-")
+            return [
+                "Use the Codex command line to replace an older plugin, then install and verify this one:",
+                "",
+                "```bash",
+                "codex plugin list",
+                "codex plugin remove <old-plugin>@<old-marketplace>",
+                f"codex plugin add {plugin}@{plugin}-marketplace",
+                "codex plugin list",
+                "```",
+                "",
+                "Run the removal command only when replacing an older plugin, then start a new Codex session.",
             ]
         return self._base.install_steps(package)
 
@@ -87,8 +123,11 @@ class _PlatformAdapter(TargetAdapter):
                 executable = executable[:-4]
             server.command = server.command.model_copy(update={"executable": executable})
         result = self._base.build(package, output_dir)
-        if self._runtime == "linux-x86_64" and self._base.name == "claude-code":
+        if self._base.name in {"claude-code", "copilot-cli", "codex"}:
             write_text(output_dir / "README.md", self.readme(package))
+        if self._base.name == "codex":
+            plugin = package.metadata.name.lower().replace("_", "-").replace(".", "-")
+            write_text(output_dir / "plugins" / plugin / "README.md", self.readme(package))
         return result
 
 
