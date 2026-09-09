@@ -264,6 +264,7 @@ def test_claude_code_plugin_root_is_a_local_marketplace(package, tmp_path: Path)
     assert len(archives) == 1
     with zipfile.ZipFile(archives[0]) as archive:
         assert "network-operations/.claude-plugin/marketplace.json" in archive.namelist()
+        assert ".claude-plugin/marketplace.json" not in archive.namelist()
 
 
 def test_codex_emits_installable_plugin(package, tmp_path: Path):

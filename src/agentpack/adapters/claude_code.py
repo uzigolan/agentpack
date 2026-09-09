@@ -18,6 +18,7 @@ from agentpack.adapters.base import TargetAdapter
 from agentpack.core.fsutil import write_json, write_text
 from agentpack.models.package import (
     AgentPackage,
+    ArchiveSpec,
     ArtifactType,
     BuildResult,
     MCPServer,
@@ -151,7 +152,10 @@ class ClaudeCodeAdapter(TargetAdapter):
 
         write_text(output_dir / "README.md", self.readme(package))
         return BuildResult(
-            target=self.name, output_dir=output_dir, artifact_type=ArtifactType.PLUGIN
+            target=self.name,
+            output_dir=output_dir,
+            artifact_type=ArtifactType.PLUGIN,
+            archive_specs=[ArchiveSpec(root=".", label="", arc_root=meta.name)],
         )
 
     def install_steps(self, package: AgentPackage) -> list[str]:

@@ -273,6 +273,7 @@ class ArchiveSpec(StrictModel):
     root: str
     label: str
     suffix: str = ".zip"
+    arc_root: str | None = None
     source_is_file: bool = False
     filename: str | None = None
 

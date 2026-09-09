@@ -173,6 +173,7 @@ def build(
                             src,
                             packages_dir
                             / _archive_filename(package, stem, label=spec.label, suffix=spec.suffix),
+                            arc_root=spec.arc_root,
                         )
                     )
             else:
