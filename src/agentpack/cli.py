@@ -129,6 +129,10 @@ def init(
     package_version: Annotated[
         str, typer.Option("--version", help="Initial package version (default: 0.1.0).")
     ] = "0.1.0",
+    display_name: Annotated[
+        str | None,
+        typer.Option("--display-name", help="Initial metadata.displayName (default: title-cased name)."),
+    ] = None,
     author_name: Annotated[
         str,
         typer.Option("--author-name", help="Initial metadata.authors[0].name value."),
@@ -148,6 +152,7 @@ def init(
         example=example,
         output=output,
         version=package_version,
+        display_name=display_name,
         author_name=author_name,
     )
     if not created:
@@ -487,6 +492,30 @@ def set_package_version(
     edit.write_doc(manifest, doc)
     typer.secho(
         f"Package version: {previous or 'unset'} -> {value}", fg=typer.colors.GREEN
+    )
+
+
+displayname_app = typer.Typer(
+    invoke_without_command=True, help="Show or set the package display name."
+)
+app.add_typer(displayname_app, name="display-name")
+
+
+@displayname_app.command("set")
+def set_package_display_name(
+    value: Annotated[str, typer.Argument(help='New display name, for example "RAD (Local)".')],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    package_name: PackageNameOpt = None,
+) -> None:
+    """Set metadata.displayName in a package workspace manifest."""
+    manifest, doc = _open_manifest(project, file, package_name)
+    metadata = doc.setdefault("metadata", {})
+    previous = metadata.get("displayName")
+    metadata["displayName"] = value
+    edit.write_doc(manifest, doc)
+    typer.secho(
+        f"Package display name: {previous or 'unset'} -> {value}", fg=typer.colors.GREEN
     )
 
 

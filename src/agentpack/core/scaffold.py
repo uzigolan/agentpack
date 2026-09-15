@@ -173,10 +173,11 @@ def init_project(
     example: bool = False,
     output: str = "dist",
     version: str = "0.1.0",
+    display_name: str | None = None,
     author_name: str = DEFAULT_AUTHOR_NAME,
 ) -> list[str]:
     directory.mkdir(parents=True, exist_ok=True)
-    title = name.replace("-", " ").replace("_", " ").title()
+    title = display_name or name.replace("-", " ").replace("_", " ").title()
     default_name = manifest_name in ("agentpack.yaml", "agentpack.yml")
 
     files = {
