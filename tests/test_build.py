@@ -95,9 +95,21 @@ def test_copilot_cli_plugin_uses_the_cli_plugin_root(package, tmp_path: Path):
     assert mcp["mcpServers"]["netops"]["command"].startswith("${PLUGIN_ROOT}/")
 
 
-def test_copilot_cli_archive_extracts_into_one_package_directory(package, tmp_path: Path):
+def test_copilot_cli_win_archive_is_flat(package, tmp_path: Path):
+    # Windows' own "Extract All" already wraps a zip in a folder; the
+    # archive itself must not double up on that.
     build(package, targets=["copilot-cli-win"], output_dir=tmp_path / "dist", archive=True)
     archive = next((tmp_path / "dist" / "packages").glob("copilot-cli-win-*.zip"))
+    with zipfile.ZipFile(archive) as contents:
+        assert "plugin.json" in contents.namelist()
+        assert "network-operations/plugin.json" not in contents.namelist()
+
+
+def test_copilot_cli_linux_archive_extracts_into_one_package_directory(package, tmp_path: Path):
+    # `unzip` on Linux has no default wrapping folder, so the archive must
+    # supply its own.
+    build(package, targets=["copilot-cli-linux"], output_dir=tmp_path / "dist", archive=True)
+    archive = next((tmp_path / "dist" / "packages").glob("copilot-cli-linux-*.zip"))
     with zipfile.ZipFile(archive) as contents:
         assert "network-operations/plugin.json" in contents.namelist()
         assert "plugin.json" not in contents.namelist()
@@ -321,12 +333,43 @@ def test_codex_emits_installable_plugin(package, tmp_path: Path):
     assert marketplace["plugins"][0]["source"]["path"] == "./plugins/network-operations"
 
 
-def test_codex_archive_extracts_into_one_package_directory(package, tmp_path: Path):
+def test_codex_win_archive_is_flat(package, tmp_path: Path):
+    # Windows' own "Extract All" already wraps a zip in a folder; the
+    # archive itself must not double up on that.
     build(package, targets=["codex-win"], output_dir=tmp_path / "dist", archive=True)
     archive = next((tmp_path / "dist" / "packages").glob("codex-win-marketplace-*.zip"))
     with zipfile.ZipFile(archive) as contents:
+        assert ".agents/plugins/marketplace.json" in contents.namelist()
+        assert "network-operations/.agents/plugins/marketplace.json" not in contents.namelist()
+
+
+def test_codex_linux_archive_extracts_into_one_package_directory(package, tmp_path: Path):
+    # `unzip` on Linux has no default wrapping folder, so the archive must
+    # supply its own.
+    build(package, targets=["codex-cli-linux"], output_dir=tmp_path / "dist", archive=True)
+    archive = next((tmp_path / "dist" / "packages").glob("codex-cli-linux-marketplace-*.zip"))
+    with zipfile.ZipFile(archive) as contents:
         assert "network-operations/.agents/plugins/marketplace.json" in contents.namelist()
         assert ".agents/plugins/marketplace.json" not in contents.namelist()
+
+
+def test_universal_linux_archive_extracts_into_one_package_directory(package, tmp_path: Path):
+    # universal has no archive_specs of its own (it isn't a single-root
+    # bundle like the plugin adapters), so the platform wrapper must inject
+    # arc_root itself when targeting linux.
+    build(package, targets=["universal-linux"], output_dir=tmp_path / "dist", archive=True)
+    archive = next((tmp_path / "dist" / "packages").glob("universal-linux-*.zip"))
+    with zipfile.ZipFile(archive) as contents:
+        assert "network-operations/plugin.json" in contents.namelist()
+        assert "plugin.json" not in contents.namelist()
+
+
+def test_universal_win_archive_is_flat(package, tmp_path: Path):
+    build(package, targets=["universal-win"], output_dir=tmp_path / "dist", archive=True)
+    archive = next((tmp_path / "dist" / "packages").glob("universal-win-*.zip"))
+    with zipfile.ZipFile(archive) as contents:
+        assert "plugin.json" in contents.namelist()
+        assert "network-operations/plugin.json" not in contents.namelist()
 
 
 def test_linux_platform_target_uses_linux_runtime_path(package, tmp_path: Path):

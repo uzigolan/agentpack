@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from agentpack.adapters.base import TargetAdapter
 from agentpack.core.fsutil import write_text
+from agentpack.models.package import ArchiveSpec
 
 if TYPE_CHECKING:
     from agentpack.models.package import AgentPackage
@@ -123,6 +124,28 @@ class _PlatformAdapter(TargetAdapter):
                 executable = executable[:-4]
             server.command = server.command.model_copy(update={"executable": executable})
         result = self._base.build(package, output_dir)
+        # Windows' own "Extract All" already wraps a zip's contents in a
+        # folder named after the archive; adding arc_root too would
+        # double-nest it. Linux `unzip` has no such default, so archives
+        # built for linux-x86_64 need arc_root to land in one folder instead
+        # of spilling loose files into whatever directory it's run from.
+        if self._runtime == "windows-amd64" and result.archive_specs:
+            result = result.model_copy(
+                update={
+                    "archive_specs": [
+                        spec.model_copy(update={"arc_root": None})
+                        for spec in result.archive_specs
+                    ]
+                }
+            )
+        elif self._runtime == "linux-x86_64" and not result.archive_specs:
+            result = result.model_copy(
+                update={
+                    "archive_specs": [
+                        ArchiveSpec(root=".", label="", arc_root=package.metadata.name)
+                    ]
+                }
+            )
         if self._base.name in {"claude-code", "copilot-cli", "codex"}:
             write_text(output_dir / "README.md", self.readme(package))
         if self._base.name == "codex":
