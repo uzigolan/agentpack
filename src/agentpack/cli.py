@@ -12,8 +12,8 @@ import yaml
 
 from agentpack import API_VERSION, __version__
 from agentpack.core import edit, mcp_import, scaffold
-from agentpack.core.builder import build as run_build
-from agentpack.core.diagnostics import AP1001, AgentPackError, Diagnostics, Severity
+from agentpack.core.builder import _package_transport_label, _safe_segment, build as run_build
+from agentpack.core.diagnostics import AP1001, AP1003, AgentPackError, Diagnostics, Severity
 from agentpack.core.fsutil import clean_dir, copy_tree, ensure_inside, iter_files, remove_tree
 from agentpack.core.loader import load_package, resolve_manifest
 from agentpack.core.package_docs import write_guides
@@ -384,6 +384,96 @@ def target_install(
     typer.secho(f"Markdown guide: {markdown}", fg=typer.colors.GREEN)
     typer.secho(f"HTML guide:     {html}", fg=typer.colors.GREEN)
     typer.echo(f"Detected {len(artifacts)} package artifact(s).")
+
+
+@app.command(name="docs")
+def docs_cmd(
+    path: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Folder containing packages or an artifact/project root (default: search packages).",
+        ),
+    ] = None,
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    package_name: PackageNameOpt = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Folder for generated install guides."),
+    ] = None,
+) -> None:
+    """Update or regenerate HTML and Markdown install guides."""
+    suffix = None
+    packages_dir: Path | None = None
+
+    if path is not None:
+        if (path / "packages").is_dir():
+            packages_dir = path / "packages"
+        elif (path / "dist" / "packages").is_dir():
+            packages_dir = path / "dist" / "packages"
+        elif path.is_dir():
+            packages_dir = path
+        else:
+            raise _fail(AgentPackError(AP1003, f"directory not found: {path}"))
+    else:
+        try:
+            pkg, _ = _load(project, file, package_name)
+            candidate = pkg.project_dir / pkg.build.output / "packages"
+            if candidate.is_dir():
+                packages_dir = candidate
+                suffix = f"{_package_transport_label(pkg)}-{_safe_segment(pkg.metadata.version)}"
+        except Exception:
+            pass
+        if packages_dir is None:
+            for fallback in (project / "dist" / "packages", Path("dist/packages")):
+                if fallback.is_dir():
+                    packages_dir = fallback
+                    break
+
+    if packages_dir is None or not packages_dir.is_dir():
+        raise _fail(
+            AgentPackError(
+                AP1003,
+                f"packages directory not found: {packages_dir or 'dist/packages'}",
+            )
+        )
+
+    out_dir = output or packages_dir
+    try:
+        written_guides: list[Path] = []
+        if suffix:
+            md1, html1, artifacts = write_guides(
+                packages_dir, output_dir=out_dir, name_suffix=suffix
+            )
+            written_guides.extend([md1, html1])
+        md2, html2, artifacts = write_guides(packages_dir, output_dir=out_dir)
+        written_guides.extend([md2, html2])
+    except AgentPackError as exc:
+        raise _fail(exc) from None
+
+    for g in sorted(set(written_guides)):
+        typer.secho(f"Updated guide: {g}", fg=typer.colors.GREEN)
+    typer.echo(f"Detected {len(artifacts)} package artifact(s).")
+
+
+@app.command(name="update-docs")
+def update_docs_cmd(
+    path: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Folder containing packages or an artifact/project root (default: search packages).",
+        ),
+    ] = None,
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    package_name: PackageNameOpt = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Folder for generated install guides."),
+    ] = None,
+) -> None:
+    """Update or regenerate HTML and Markdown install guides."""
+    docs_cmd(path=path, project=project, file=file, package_name=package_name, output=output)
 
 
 @app.command(name="list-targets")

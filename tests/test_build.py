@@ -93,6 +93,11 @@ def test_copilot_cli_plugin_uses_the_cli_plugin_root(package, tmp_path: Path):
     assert json.loads((output / "plugin.json").read_text(encoding="utf-8"))["mcpServers"] == ".mcp.json"
     mcp = json.loads((output / ".mcp.json").read_text(encoding="utf-8"))
     assert mcp["mcpServers"]["netops"]["command"].startswith("${PLUGIN_ROOT}/")
+    marketplace = json.loads((output / "marketplace.json").read_text(encoding="utf-8"))
+    assert marketplace["name"] == "network-operations"
+    assert marketplace["plugins"][0]["name"] == "network-operations"
+    assert marketplace["plugins"][0]["source"] == "."
+    assert (output / ".claude-plugin" / "marketplace.json").is_file()
 
 
 def test_copilot_cli_win_archive_is_flat(package, tmp_path: Path):
@@ -549,6 +554,21 @@ def test_packaging_clears_archives_from_the_previous_run(package, tmp_path: Path
         "INSTALL-mixed-0.1.0.md",
         "universal-mixed-0.1.0.zip",
     ]
+
+
+def test_partial_target_build_preserves_other_target_packages(package, tmp_path: Path):
+    output = tmp_path / "dist"
+    # First build universal archive
+    build(package, targets=["universal"], output_dir=output, archive=True)
+    universal_archive = output / "packages" / "universal-mixed-0.1.0.zip"
+    assert universal_archive.exists()
+
+    # Next build a specific copilot-cli-win target archive
+    build(package, targets=["copilot-cli-win"], output_dir=output, archive=True)
+    copilot_archive = output / "packages" / "copilot-cli-win-mixed-0.1.0.zip"
+    assert copilot_archive.exists()
+    # The universal archive from the other target must be preserved
+    assert universal_archive.exists()
 
 
 def test_readmes_forbid_manual_copying(package, tmp_path: Path):

@@ -243,6 +243,24 @@ class CopilotPluginAdapter(CopilotVSCodeAdapter):
         # compatibility.
         write_json(output_dir / ".copilot-plugin" / "plugin.json", manifest)
         write_json(output_dir / ".claude-plugin" / "plugin.json", manifest)
+
+        # Copilot CLI and Copilot plugin management UI also look for marketplace.json
+        # when adding local sources / marketplaces.
+        marketplace = {
+            "name": package.metadata.name,
+            "owner": {"name": package.metadata.author_name},
+            "plugins": [
+                {
+                    "name": package.metadata.name,
+                    "source": ".",
+                    "description": package.metadata.description,
+                    "version": package.metadata.version,
+                }
+            ],
+        }
+        write_json(output_dir / "marketplace.json", marketplace)
+        write_json(output_dir / ".claude-plugin" / "marketplace.json", marketplace)
+
         self.stage_portable_payload(package, output_dir)
         self.stage_skills(package, output_dir / "skills")
         for assets, folder in (

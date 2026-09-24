@@ -68,7 +68,7 @@ def scan(packages_dir: Path) -> list[PackageArtifact]:
         elif path.is_file() and _has_name_part(name, "claude-code") and name.endswith(".zip"):
             plugin, marketplace = _plugin_identity(path, ".claude-plugin/marketplace.json")
             artifacts.append(
-                PackageArtifact(path, "Claude Code", "plugin marketplace", plugin, marketplace)
+                PackageArtifact(path, "Claude Code Cli", "plugin marketplace", plugin, marketplace)
             )
         elif path.is_file() and _has_name_part(name, "copilot-cli") and name.endswith(".zip"):
             manifest = _zip_json(path, "plugin.json")
@@ -78,7 +78,7 @@ def scan(packages_dir: Path) -> list[PackageArtifact]:
         elif path.is_file() and _has_name_part(name, "copilot") and name.endswith(".zip"):
             manifest = _zip_json(path, "plugin.json")
             artifacts.append(
-                PackageArtifact(path, "GitHub Copilot", "plugin", manifest.get("name"))
+                PackageArtifact(path, "VS Code GitHub Copilot", "plugin", manifest.get("name"))
             )
         elif path.is_file() and _has_name_part(name, "codex") and name.endswith(".zip"):
             plugin, marketplace = _plugin_identity(path, ".agents/plugins/marketplace.json")
@@ -145,10 +145,10 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
             "6. Fully quit Claude Desktop, including its system-tray icon, then reopen it."
         )
 
-    claude_code = [item for item in artifacts if item.target == "Claude Code"]
+    claude_code = [item for item in artifacts if item.target in ("Claude Code", "Claude Code Cli")]
     if claude_code:
         item = claude_code[0]
-        lines += ["", "## Claude Code", "", f"1. Extract `{item.path.name}` to a folder."]
+        lines += ["", "## Claude Code Cli", "", f"1. Extract `{item.path.name}` to a folder."]
         if item.plugin_name and item.marketplace_name:
             lines += [
                 "2. In Claude Code, run:",
@@ -161,11 +161,11 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
         else:
             lines.append("2. Add the extracted folder through Claude Code’s Plugins screen.")
 
-    copilot = [item for item in artifacts if item.target == "GitHub Copilot"]
+    copilot = [item for item in artifacts if item.target in ("GitHub Copilot", "VS Code GitHub Copilot")]
     if copilot:
         lines += [
             "",
-            "## GitHub Copilot",
+            "## VS Code GitHub Copilot",
             "",
             f"1. Extract `{copilot[0].path.name}` to a folder.",
             "2. Open Copilot **Settings → Plugins → Install Plugin from Source**.",
@@ -174,6 +174,10 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
 
     copilot_cli = [item for item in artifacts if item.target == "GitHub Copilot CLI"]
     if copilot_cli:
+        win_item = next(
+            (item for item in copilot_cli if "-win" in item.path.name.lower()),
+            copilot_cli[0],
+        )
         lines += [
             "",
             "## GitHub Copilot CLI",
@@ -185,6 +189,14 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
             "4. Run `copilot plugin list` to confirm installation, then start a new Copilot CLI session.",
             "5. If uninstall reports that the plugin directory is in use, close all Copilot and "
             "VS Code sessions, then retry the uninstall command.",
+            "",
+            "### GitHub Copilot App (UI)",
+            "",
+            f"1. Extract `{win_item.path.name}` to a folder.",
+            "2. In the GitHub Copilot App, open **Customize**.",
+            "3. Select the **Installed** tab.",
+            "4. Click the **+ Add Plugin** button and choose **Manage Marketplaces**.",
+            "5. Paste the extracted plugin directory path into the **Source** field and press **Add**.",
         ]
 
     codex = [item for item in artifacts if item.target == "Codex"]
@@ -251,7 +263,7 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
             f"<li>{step}</li>" for step in steps
         ) + "</ol></section>")
 
-    claude_code = [item for item in artifacts if item.target == "Claude Code"]
+    claude_code = [item for item in artifacts if item.target in ("Claude Code", "Claude Code Cli")]
     if claude_code:
         item = claude_code[0]
         body = f"<ol><li>Extract <code>{escape(item.path.name)}</code> to a folder.</li>"
@@ -264,12 +276,12 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
             )
         else:
             body += "<li>Add the extracted folder through Claude Code’s Plugins screen.</li>"
-        sections.append(f"<section><h2>Claude Code</h2>{body}</ol></section>")
+        sections.append(f"<section><h2>Claude Code Cli</h2>{body}</ol></section>")
 
-    copilot = [item for item in artifacts if item.target == "GitHub Copilot"]
+    copilot = [item for item in artifacts if item.target in ("GitHub Copilot", "VS Code GitHub Copilot")]
     if copilot:
         sections.append(
-            "<section><h2>GitHub Copilot</h2><ol>"
+            "<section><h2>VS Code GitHub Copilot</h2><ol>"
             f"<li>Extract <code>{escape(copilot[0].path.name)}</code> to a folder.</li>"
             "<li>Open Copilot <strong>Settings → Plugins → Install Plugin from Source"
             "</strong>.</li>"
@@ -279,9 +291,15 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
 
     copilot_cli = [item for item in artifacts if item.target == "GitHub Copilot CLI"]
     if copilot_cli:
+        win_item = next(
+            (item for item in copilot_cli if "-win" in item.path.name.lower()),
+            copilot_cli[0],
+        )
+        cli_zip = escape(copilot_cli[0].path.name)
+        win_zip = escape(win_item.path.name)
         sections.append(
             "<section><h2>GitHub Copilot CLI</h2><ol>"
-            f"<li>Extract <code>{escape(copilot_cli[0].path.name)}</code> to a folder.</li>"
+            f"<li>Extract <code>{cli_zip}</code> to a folder.</li>"
             "<li>To replace an older plugin, close active Copilot and VS Code sessions, then run "
             "<code>copilot plugin uninstall &lt;old-plugin&gt;</code> in PowerShell.</li>"
             "<li>Run <code>copilot plugin install &lt;absolute path to the "
@@ -290,6 +308,15 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
             "new Copilot CLI session.</li>"
             "<li>If uninstall reports that the plugin directory is in use, close all Copilot and "
             "VS Code sessions, then retry the uninstall command.</li></ol></section>"
+        )
+        sections.append(
+            "<section><h2>GitHub Copilot App (UI)</h2><ol>"
+            f"<li>Extract <code>{win_zip}</code> to a folder.</li>"
+            "<li>In the GitHub Copilot App, open <strong>Customize</strong>.</li>"
+            "<li>Select the <strong>Installed</strong> tab.</li>"
+            "<li>Click the <strong>+ Add Plugin</strong> button and choose <strong>Manage Marketplaces</strong>.</li>"
+            "<li>Paste the extracted plugin directory path into the <strong>Source</strong> field and press <strong>Add</strong>.</li>"
+            "</ol></section>"
         )
 
     codex = [item for item in artifacts if item.target == "Codex"]

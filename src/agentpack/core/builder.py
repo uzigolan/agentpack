@@ -103,12 +103,18 @@ def build(
 
     out_root = output_dir or (package.project_dir / package.build.output)
     build_root = out_root / "build"
+    packages_dir = out_root / "packages"
+    is_partial_build = targets is not None
     if package.build.clean:
-        clean_dir(build_root)
-        # ``package`` promises a fresh distributable set, not a mixture of the
-        # current target selection and archives left by a previous invocation.
-        if archive:
-            clean_dir(out_root / "packages")
+        if not is_partial_build:
+            clean_dir(build_root)
+            # ``package`` promises a fresh distributable set, not a mixture of the
+            # current target selection and archives left by a previous invocation.
+            if archive:
+                clean_dir(packages_dir)
+        else:
+            for name in selected:
+                clean_dir(build_root / name)
     build_root.mkdir(parents=True, exist_ok=True)
 
     results: list[BuildResult] = []
@@ -152,6 +158,26 @@ def build(
         if archive:
             packages_dir = out_root / "packages"
             stem = name
+            if is_partial_build and packages_dir.is_dir():
+                known_targets = set(registry.names())
+                stem_prefix = f"{_safe_segment(stem)}-"
+                stem_dot = f"{_safe_segment(stem)}."
+                for existing in list(packages_dir.iterdir()):
+                    if not existing.is_file():
+                        continue
+                    if existing.name.startswith(stem_prefix) or existing.name.startswith(stem_dot):
+                        existing.unlink()
+                        continue
+                    if existing.name.startswith("INSTALL"):
+                        continue
+                    matches_other_target = any(
+                        existing.name.startswith(f"{_safe_segment(t)}-")
+                        or existing.name.startswith(f"{_safe_segment(t)}.")
+                        for t in known_targets
+                        if t != name
+                    )
+                    if not matches_other_target:
+                        existing.unlink()
             if result.archive_specs:
                 for spec in result.archive_specs:
                     src = final / spec.root
@@ -198,17 +224,30 @@ def build(
             name_suffix=f"{_package_transport_label(package)}-{_safe_segment(package.metadata.version)}",
         )
 
+    manifest_path = out_root / "agentpack-build.json"
+    target_names = [r.target for r in results]
+    if is_partial_build and manifest_path.is_file():
+        try:
+            old_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            preserved_targets = [t for t in old_manifest.get("targets", []) if t not in target_names]
+            preserved_artifacts = [
+                a for a in old_manifest.get("artifacts", []) if a.get("target") not in target_names
+            ]
+            target_names = preserved_targets + target_names
+            artifacts = preserved_artifacts + artifacts
+        except Exception:
+            pass
+
     manifest = {
         "agentpackVersion": __version__,
         "package": package.metadata.name,
         "packageVersion": package.metadata.version,
         "knowledgeMode": package.build.knowledge.value,
-        "targets": [r.target for r in results],
+        "targets": target_names,
         "installGuide": guide_path.name,
         "artifacts": artifacts,
         "diagnostics": [d.render() for d in diags],
     }
-    manifest_path = out_root / "agentpack-build.json"
     write_json(manifest_path, manifest)
 
     return BuildSummary(
