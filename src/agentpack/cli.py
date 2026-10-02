@@ -551,9 +551,11 @@ def version(ctx: typer.Context) -> None:
 # Manifest editing
 # --------------------------------------------------------------------------
 skill_app = typer.Typer(no_args_is_help=True, help="Register skill paths in the manifest.")
+agent_app = typer.Typer(no_args_is_help=True, help="Import Copilot custom agents.")
 mcp_app = typer.Typer(no_args_is_help=True, help="Manage MCP server definitions.")
 pack_app = typer.Typer(no_args_is_help=True, help="Import complete portable capability packs.")
 app.add_typer(skill_app, name="skill")
+app.add_typer(agent_app, name="agent")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(pack_app, name="pack")
 
@@ -911,6 +913,50 @@ def skill_remove(
         raise typer.Exit(code=1)
     edit.write_doc(manifest, doc)
     typer.secho(f"Unregistered skills: {edit.normalize(path)}", fg=typer.colors.GREEN)
+
+
+@agent_app.command("import")
+def agent_import(
+    source: Annotated[Path, typer.Argument(help="Directory containing .agent.md files to copy.")],
+    project: ProjectOpt = Path("."),
+    file: FileOpt = None,
+    package_name: PackageNameOpt = None,
+    overwrite: Annotated[
+        bool, typer.Option("--overwrite", help="Replace existing imported agent files without asking.")
+    ] = False,
+) -> None:
+    """Copy custom agents into this package, then register the agents directory."""
+    manifest, doc = _open_manifest(project, file, package_name)
+    source = source.resolve()
+    if not source.is_dir():
+        typer.secho(f"ERROR: agent source directory not found: {source}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    agent_files = sorted(path for path in source.rglob("*.agent.md") if path.is_file())
+    if not agent_files:
+        typer.secho(f"ERROR: no .agent.md files found under {source}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    destination = manifest.parent / "agents"
+    planned = [(path, destination / path.relative_to(source)) for path in agent_files]
+    conflicts = [target for _, target in planned if target.exists()]
+    if conflicts and not overwrite:
+        overwrite = typer.confirm(
+            f"Import would overwrite {len(conflicts)} existing agent file(s). Overwrite?",
+            default=False,
+        )
+    if conflicts and not overwrite:
+        typer.secho("Import cancelled; existing agent files were left unchanged.", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+
+    for original, target in planned:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(original, target)
+
+    edit.add_entry(doc, "agents", "agents")
+    edit.write_doc(manifest, doc)
+    typer.secho(f"Imported {len(agent_files)} agent(s) into {destination}", fg=typer.colors.GREEN)
+    typer.echo("Registered agents: agents")
 
 
 TransportOpt = Annotated[

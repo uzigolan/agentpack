@@ -200,6 +200,26 @@ def test_skill_import_confirms_before_overwriting(tmp_path: Path):
     assert "new text" in (target / "SKILL.md").read_text(encoding="utf-8")
 
 
+def test_agent_import_copies_agent_files_and_registers_the_directory(tmp_path: Path):
+    manifest = init(tmp_path)
+    external = tmp_path / "rad-agent-toolkit" / ".github" / "agents"
+    (external / "nested").mkdir(parents=True)
+    (external / "router.agent.md").write_text("---\nname: router\n---\n", encoding="utf-8")
+    (external / "nested" / "worker.agent.md").write_text(
+        "---\nname: worker\n---\n", encoding="utf-8"
+    )
+    (external / "README.md").write_text("not an agent", encoding="utf-8")
+
+    result = runner.invoke(app, ["agent", "import", str(external), "-f", str(manifest)])
+
+    assert result.exit_code == 0, result.output
+    assert "Imported 2 agent(s)" in result.output
+    assert (manifest.parent / "agents" / "router.agent.md").is_file()
+    assert (manifest.parent / "agents" / "nested" / "worker.agent.md").is_file()
+    assert not (manifest.parent / "agents" / "README.md").exists()
+    assert read(manifest)["agents"] == [{"path": "agents"}]
+
+
 def test_name_selects_the_artifacts_workspace_for_everyday_commands(tmp_path: Path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     runner.invoke(app, ["init", "-n", "demo"])

@@ -138,14 +138,24 @@ class _PlatformAdapter(TargetAdapter):
                     ]
                 }
             )
-        elif self._runtime == "linux-x86_64" and not result.archive_specs:
-            result = result.model_copy(
-                update={
-                    "archive_specs": [
-                        ArchiveSpec(root=".", label="", arc_root=package.metadata.name)
-                    ]
-                }
-            )
+        elif self._runtime == "linux-x86_64":
+            if result.archive_specs and self._base.name in {"copilot", "copilot-cli"}:
+                result = result.model_copy(
+                    update={
+                        "archive_specs": [
+                            spec.model_copy(update={"arc_root": package.metadata.name})
+                            for spec in result.archive_specs
+                        ]
+                    }
+                )
+            elif not result.archive_specs:
+                result = result.model_copy(
+                    update={
+                        "archive_specs": [
+                            ArchiveSpec(root=".", label="", arc_root=package.metadata.name)
+                        ]
+                    }
+                )
         if self._base.name in {"claude-code", "copilot-cli", "codex"}:
             write_text(output_dir / "README.md", self.readme(package))
         if self._base.name == "codex":

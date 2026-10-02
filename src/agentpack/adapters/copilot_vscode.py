@@ -277,7 +277,7 @@ class CopilotPluginAdapter(CopilotVSCodeAdapter):
             target=self.name,
             output_dir=output_dir,
             artifact_type=ArtifactType.PLUGIN,
-            archive_specs=[ArchiveSpec(root=".", label="", arc_root=package.metadata.name)],
+            archive_specs=[ArchiveSpec(root=".", label="")],
         )
 
     def install_steps(self, package: AgentPackage) -> list[str]:

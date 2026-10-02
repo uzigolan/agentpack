@@ -110,6 +110,14 @@ def test_copilot_cli_win_archive_is_flat(package, tmp_path: Path):
         assert "network-operations/plugin.json" not in contents.namelist()
 
 
+def test_copilot_archive_is_flat(package, tmp_path: Path):
+    build(package, targets=["copilot"], output_dir=tmp_path / "dist", archive=True)
+    archive = next((tmp_path / "dist" / "packages").glob("copilot-*.zip"))
+    with zipfile.ZipFile(archive) as contents:
+        assert "plugin.json" in contents.namelist()
+        assert "network-operations/plugin.json" not in contents.namelist()
+
+
 def test_copilot_cli_linux_archive_extracts_into_one_package_directory(package, tmp_path: Path):
     # `unzip` on Linux has no default wrapping folder, so the archive must
     # supply its own.

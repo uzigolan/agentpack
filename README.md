@@ -394,6 +394,7 @@ Open `artifacts/<name>/dist/packages/INSTALL.md` after every package command
 ```powershell
 agentpack init -n NAME --version X.Y.Z
 agentpack version set X.Y.Z -n NAME
+agentpack agent import DIRECTORY -n NAME
 agentpack skill import PATH -n NAME
 agentpack mcp import FILE.json -n NAME
 agentpack pack import PORTABLE_PACK_DIRECTORY -n NAME
