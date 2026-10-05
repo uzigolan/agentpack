@@ -281,16 +281,20 @@ class CopilotPluginAdapter(CopilotVSCodeAdapter):
         )
 
     def install_steps(self, package: AgentPackage) -> list[str]:
-        return [
-            "1. Extract the `copilot-<transport>-<version>.zip` archive from "
-            "`dist/packages/` into a folder.",
+        steps = [
+            "1. Extract the Copilot archive from `dist/packages/` into a folder.",
             "2. Click Copilot's **Settings** gear. It opens Copilot's plugin settings.",
             "3. Open **Plugins → + Install Plugin from Source**, then paste or select the "
             "extracted package folder.",
             "4. In the added plugin row, click **Install** to activate it.",
             "5. Run **Developer: Reload Window** from the VS Code Command Palette "
-            "(`Ctrl+Shift+P`), then start a new Copilot session and verify its tools and skills.",
+            "(`Ctrl+Shift+P`), then start a new Copilot session.",
         ]
+        if package.mcp_servers:
+            steps[-1] += " Verify its tools, agents, and skills."
+        else:
+            steps[-1] += " Verify its agents and skills."
+        return steps
 
 
 class CopilotCLIAdapter(CopilotPluginAdapter):

@@ -5,9 +5,15 @@ import zipfile
 from pathlib import Path
 
 from agentpack.core.builder import build
-from agentpack.core.diagnostics import Diagnostics
+from agentpack.core.diagnostics import AP1002, Diagnostics
 from agentpack.core.loader import load_package
-from agentpack.models.package import BuildOptions, EnvVarSource, KnowledgeMode, PortablePayload
+from agentpack.models.package import (
+    BuildOptions,
+    EnvVarSource,
+    FileAsset,
+    KnowledgeMode,
+    PortablePayload,
+)
 
 
 def _skill_zip_names(zip_path: Path) -> set[str]:
@@ -116,6 +122,34 @@ def test_copilot_archive_is_flat(package, tmp_path: Path):
     with zipfile.ZipFile(archive) as contents:
         assert "plugin.json" in contents.namelist()
         assert "network-operations/plugin.json" not in contents.namelist()
+
+
+def test_archive_without_mcp_omits_transport_label(package, tmp_path: Path):
+    package.mcp_servers = []
+    package.skills = []
+    package.metadata.description = "A sample package containing custom agents."
+    agent_source = tmp_path / "sample.agent.md"
+    agent_source.write_text(
+        "---\nname: sample\ndescription: sample agent.\n---\n", encoding="utf-8"
+    )
+    package.agents = [
+        FileAsset(
+            name="sample",
+            kind="agent",
+            source=agent_source,
+            relative_path="sample.agent.md",
+        )
+    ]
+    summary = build(package, targets=["copilot"], output_dir=tmp_path / "dist", archive=True)
+
+    assert summary.ok
+    assert all(diagnostic.code != AP1002 for diagnostic in summary.diagnostics.warnings)
+    assert (tmp_path / "dist" / "packages" / "copilot-agent-0.1.0.zip").is_file()
+    assert (tmp_path / "dist" / "packages" / "INSTALL-agent-0.1.0.md").is_file()
+    install_guide = (tmp_path / "dist" / "INSTALL.md").read_text(encoding="utf-8")
+    assert "- 1 agent(s): sample" in install_guide
+    assert "MCP" not in install_guide
+    assert "copilot-<transport>" not in install_guide
 
 
 def test_copilot_cli_linux_archive_extracts_into_one_package_directory(package, tmp_path: Path):

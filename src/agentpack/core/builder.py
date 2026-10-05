@@ -62,13 +62,21 @@ def _server_transport_label(server: MCPServer) -> str:
     return f"{server.transport.value}-{safe_hostname or 'remote'}"
 
 
-def _package_transport_label(package: AgentPackage) -> str:
+def _package_transport_label(package: AgentPackage) -> str | None:
     labels = sorted({_server_transport_label(server) for server in package.mcp_servers})
     if not labels:
-        return "no-mcp"
+        return None
     if len(labels) == 1:
         return labels[0]
     return "mixed"
+
+
+def _package_archive_labels(package: AgentPackage) -> list[str]:
+    labels = ["agent"] if package.agents else []
+    transport_label = _package_transport_label(package)
+    if transport_label:
+        labels.append(transport_label)
+    return labels
 
 
 def _archive_filename(
@@ -82,7 +90,7 @@ def _archive_filename(
     if label:
         parts.append(_safe_segment(label))
     if suffix != ".mcpb":
-        parts.append(_package_transport_label(package))
+        parts.extend(_package_archive_labels(package))
     parts.append(_safe_segment(package.metadata.version))
     return "-".join(parts) + suffix
 
@@ -221,7 +229,9 @@ def build(
         # They intentionally do not inherit manifest/build options.
         write_guides(
             out_root / "packages",
-            name_suffix=f"{_package_transport_label(package)}-{_safe_segment(package.metadata.version)}",
+            name_suffix="-".join(
+                [*_package_archive_labels(package), _safe_segment(package.metadata.version)]
+            ),
         )
 
     manifest_path = out_root / "agentpack-build.json"

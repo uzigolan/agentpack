@@ -12,7 +12,8 @@ import yaml
 
 from agentpack import API_VERSION, __version__
 from agentpack.core import edit, mcp_import, scaffold
-from agentpack.core.builder import _package_transport_label, _safe_segment, build as run_build
+from agentpack.core.builder import _package_archive_labels, _safe_segment
+from agentpack.core.builder import build as run_build
 from agentpack.core.diagnostics import AP1001, AP1003, AgentPackError, Diagnostics, Severity
 from agentpack.core.fsutil import clean_dir, copy_tree, ensure_inside, iter_files, remove_tree
 from agentpack.core.loader import load_package, resolve_manifest
@@ -421,7 +422,9 @@ def docs_cmd(
             candidate = pkg.project_dir / pkg.build.output / "packages"
             if candidate.is_dir():
                 packages_dir = candidate
-                suffix = f"{_package_transport_label(pkg)}-{_safe_segment(pkg.metadata.version)}"
+                suffix = "-".join(
+                    [*_package_archive_labels(pkg), _safe_segment(pkg.metadata.version)]
+                )
         except Exception:
             pass
         if packages_dir is None:

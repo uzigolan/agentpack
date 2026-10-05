@@ -235,7 +235,7 @@ def test_name_selects_the_artifacts_workspace_for_everyday_commands(tmp_path: Pa
     assert imported.exit_code == 0, imported.output
     assert built.exit_code == 0, built.output
     assert (tmp_path / "artifacts" / "demo" / "skills" / "alpha" / "SKILL.md").is_file()
-    package = tmp_path / "artifacts" / "demo" / "dist" / "packages" / "universal-no-mcp-0.1.0.zip"
+    package = tmp_path / "artifacts" / "demo" / "dist" / "packages" / "universal-0.1.0.zip"
     assert package.is_file()
 
 

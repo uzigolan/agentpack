@@ -44,8 +44,6 @@ def render(
         "",
         f"- {len(package.skills)} skill(s): "
         + (", ".join(s.name for s in package.skills) or "none"),
-        f"- {len(package.mcp_servers)} MCP server(s): "
-        + (", ".join(f"{s.name} ({s.transport.value})" for s in package.mcp_servers) or "none"),
         f"- knowledge mode: `{package.build.knowledge.value}`",
         "",
         "## Artifacts",
@@ -69,6 +67,17 @@ def render(
         "",
         "Install only the ones for the clients you use. Each is self-contained.",
     ]
+    if package.mcp_servers:
+        lines.insert(
+            lines.index(f"- knowledge mode: `{package.build.knowledge.value}`"),
+            f"- {len(package.mcp_servers)} MCP server(s): "
+            + ", ".join(f"{s.name} ({s.transport.value})" for s in package.mcp_servers),
+        )
+    if package.agents:
+        lines.insert(
+            lines.index(f"- knowledge mode: `{package.build.knowledge.value}`"),
+            f"- {len(package.agents)} agent(s): " + ", ".join(a.name for a in package.agents),
+        )
 
     for adapter, result in built:
         caps = adapter.capabilities()
@@ -100,7 +109,10 @@ def render(
         "## Verify",
         "",
         "1. Fully restart the client (quit it, do not just close the window).",
-        "2. Confirm the MCP server is connected in the client's MCP/tools view.",
-        "3. Confirm the skills are listed.",
     ]
+    if package.mcp_servers:
+        lines.append("2. Confirm the MCP server is connected in the client's MCP/tools view.")
+        lines.append("3. Confirm the skills are listed.")
+    else:
+        lines.append("2. Confirm the skills and agents are available.")
     return "\n".join(lines)

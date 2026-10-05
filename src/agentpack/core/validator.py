@@ -31,8 +31,8 @@ def validate_semantics(pkg: AgentPackage, diags: Diagnostics) -> None:
             if count > 1:
                 diags.error(AP1004, f"duplicate {label} name '{name}' ({count} definitions)")
 
-    if not pkg.skills and not pkg.mcp_servers:
-        diags.warning(AP1002, "package declares no skills and no MCP servers")
+    if not pkg.skills and not pkg.mcp_servers and not pkg.agents:
+        diags.warning(AP1002, "package declares no skills, MCP servers, or agents")
 
     for server in pkg.mcp_servers:
         if server.transport is TransportType.STDIO and not server.command:
