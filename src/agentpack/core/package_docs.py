@@ -108,6 +108,11 @@ CLAUDE_DESKTOP_CONNECTORS_STEP_HTML = (
 )
 
 
+def _copilot_app_install_link(item: PackageArtifact) -> str:
+    name = item.plugin_name or "<plugin-name>"
+    return f"ghapp://plugins/install?source={name}%40{name}"
+
+
 def render_markdown(artifacts: list[PackageArtifact]) -> str:
     lines = [
         "# Package installation guide",
@@ -178,6 +183,7 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
             (item for item in copilot_cli if "-win" in item.path.name.lower()),
             copilot_cli[0],
         )
+        app_install_link = _copilot_app_install_link(win_item)
         lines += [
             "",
             "## GitHub Copilot CLI",
@@ -197,6 +203,13 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
             "3. Select the **Installed** tab.",
             "4. Click the **+ Add Plugin** button and choose **Manage Marketplaces**.",
             "5. Paste the extracted plugin directory path into the **Source** field and press **Add**.",
+            "6. If there is no install option, run the following command in PowerShell (Windows):",
+            "",
+            "```powershell",
+            f"Start-Process '{app_install_link}'",
+            "```",
+            "",
+            "7. In the app panel, press **Allow**, then press **Install**.",
         ]
 
     codex = [item for item in artifacts if item.target == "Codex"]
@@ -297,6 +310,7 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
         )
         cli_zip = escape(copilot_cli[0].path.name)
         win_zip = escape(win_item.path.name)
+        app_install_link = escape(_copilot_app_install_link(win_item))
         sections.append(
             "<section><h2>GitHub Copilot CLI</h2><ol>"
             f"<li>Extract <code>{cli_zip}</code> to a folder.</li>"
@@ -316,6 +330,12 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
             "<li>Select the <strong>Installed</strong> tab.</li>"
             "<li>Click the <strong>+ Add Plugin</strong> button and choose <strong>Manage Marketplaces</strong>.</li>"
             "<li>Paste the extracted plugin directory path into the <strong>Source</strong> field and press <strong>Add</strong>.</li>"
+            "<li>If there is no install option, run the following command in PowerShell "
+            "(Windows):<pre><code>"
+            f"Start-Process '{app_install_link}'"
+            "</code></pre></li>"
+            "<li>In the app panel, press <strong>Allow</strong>, then press "
+            "<strong>Install</strong>.</li>"
             "</ol></section>"
         )
 
