@@ -94,6 +94,15 @@ def _names(artifacts: list[PackageArtifact], target: str) -> list[str]:
     return [artifact.path.name for artifact in artifacts if artifact.target == target]
 
 
+def _platform(item: PackageArtifact) -> str | None:
+    name = item.path.name.lower()
+    if "-win-" in name or "-windows-" in name:
+        return "Windows"
+    if "-linux-" in name:
+        return "Linux"
+    return None
+
+
 CLAUDE_DESKTOP_CONNECTORS_STEP = (
     "Open **Settings → Customize → Connectors**, choose **Your Connectors**, and change "
     "the connector permission from **Needs Approval** to **Always allow**. Otherwise, "
@@ -152,21 +161,52 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
 
     claude_code = [item for item in artifacts if item.target in ("Claude Code", "Claude Code Cli")]
     if claude_code:
-        item = claude_code[0]
-        lines += ["", "## Claude Code Cli", "", f"1. Extract `{item.path.name}` to a folder."]
-        if item.plugin_name and item.marketplace_name:
+        lines += ["", "## Claude Code Cli", ""]
+        for item in claude_code:
+            platform = _platform(item)
+            if platform:
+                lines += [f"### {platform}", ""]
             lines += [
-                "2. In Claude Code, run:",
+                f"1. Extract `{item.path.name}` into a versioned folder.",
+                "2. For a first install, register the folder as a local marketplace and install "
+                "the plugin:",
                 "",
-                "```text",
-                "/plugin marketplace add <absolute path to extracted folder>",
-                f"/plugin install {item.plugin_name}@{item.marketplace_name}",
-                "```",
+                "```bash",
+                "claude plugin marketplace add \"<absolute path to extracted folder>\"",
             ]
-        else:
-            lines.append("2. Add the extracted folder through Claude Code’s Plugins screen.")
+            if item.plugin_name and item.marketplace_name:
+                lines += [
+                    f"claude plugin install {item.plugin_name}@"
+                    f"{item.marketplace_name} --scope user",
+                    "```",
+                    "",
+                    "3. To update an existing install, keep using the same marketplace folder, "
+                    "put the new build there, then refresh and update it:",
+                    "",
+                    "```bash",
+                    f"claude plugin marketplace update {item.marketplace_name}",
+                    f"claude plugin update {item.plugin_name}@{item.marketplace_name}",
+                    "claude plugin list",
+                    "```",
+                ]
+            else:
+                lines += [
+                    "```",
+                    "",
+                    "3. Install or update the plugin from the registered marketplace in Claude "
+                    "Code.",
+                ]
+            lines += [
+                "",
+                "To test a new build from a different folder without replacing the installed "
+                "plugin, start a one-off session with "
+                "`claude --plugin-dir \"<absolute path to extracted plugin folder>\"`.",
+                "",
+            ]
 
-    copilot = [item for item in artifacts if item.target in ("GitHub Copilot", "VS Code GitHub Copilot")]
+    copilot = [
+        item for item in artifacts if item.target in ("GitHub Copilot", "VS Code GitHub Copilot")
+    ]
     if copilot:
         lines += [
             "",
@@ -179,38 +219,96 @@ def render_markdown(artifacts: list[PackageArtifact]) -> str:
 
     copilot_cli = [item for item in artifacts if item.target == "GitHub Copilot CLI"]
     if copilot_cli:
-        win_item = next(
-            (item for item in copilot_cli if "-win" in item.path.name.lower()),
-            copilot_cli[0],
-        )
-        app_install_link = _copilot_app_install_link(win_item)
         lines += [
             "",
             "## GitHub Copilot CLI",
             "",
-            f"1. Extract `{copilot_cli[0].path.name}` to a folder.",
-            "2. To replace an older plugin, close active Copilot and VS Code sessions, then run "
-            "`copilot plugin uninstall <old-plugin>` in PowerShell.",
-            "3. Run `copilot plugin install <absolute path to the extracted folder>`.",
-            "4. Run `copilot plugin list` to confirm installation, then start a new Copilot CLI session.",
-            "5. If uninstall reports that the plugin directory is in use, close all Copilot and "
-            "VS Code sessions, then retry the uninstall command.",
-            "",
-            "### GitHub Copilot App (UI)",
-            "",
-            f"1. Extract `{win_item.path.name}` to a folder.",
-            "2. In the GitHub Copilot App, open **Customize**.",
-            "3. Select the **Installed** tab.",
-            "4. Click the **+ Add Plugin** button and choose **Manage Marketplaces**.",
-            "5. Paste the extracted plugin directory path into the **Source** field and press **Add**.",
-            "6. If there is no install option, run the following command in PowerShell (Windows):",
-            "",
-            "```powershell",
-            f"Start-Process '{app_install_link}'",
-            "```",
-            "",
-            "7. In the app panel, press **Allow**, then press **Install**.",
         ]
+        for item in copilot_cli:
+            platform = _platform(item)
+            if platform:
+                label = "Windows (PowerShell)" if platform == "Windows" else "Linux (Bash)"
+                lines += [f"### {label}", ""]
+                plugin_name = item.plugin_name or "<plugin-name>"
+                lines += [
+                    f"1. Extract `{item.path.name}` to a versioned folder; use the folder "
+                    "containing `plugin.json`.",
+                    "2. First install: run `copilot plugin install "
+                    "\"<absolute path to plugin folder>\"`.",
+                    f"3. To update the installed `{plugin_name}`, replace all files in the "
+                    "same source folder with the new build, then run "
+                    f"`copilot plugin update {plugin_name}`.",
+                    "4. Run `copilot plugin list` to verify the version, then exit Copilot CLI "
+                    "completely and run `copilot` again to start a fresh MCP server process.",
+                    "",
+                ]
+                if platform == "Windows":
+                    lines += [
+                        "To test a different extracted folder without changing the default "
+                        "profile, use a separate config directory in the same PowerShell session:",
+                        "",
+                        "```powershell",
+                        '$env:COPILOT_HOME = "$HOME\\.copilot-plugin-test"',
+                        'copilot plugin install "<absolute path to test plugin folder>"',
+                        "copilot plugin list",
+                        "copilot",
+                        "```",
+                        "",
+                        "Close that terminal to return to the default profile.",
+                        "",
+                    ]
+                else:
+                    lines += [
+                        "To test a different extracted folder without changing the default "
+                        "profile, use a separate config directory in the same Bash session:",
+                        "",
+                        "```bash",
+                        'export COPILOT_HOME="$HOME/.copilot-plugin-test"',
+                        'copilot plugin install "<absolute path to test plugin folder>"',
+                        "copilot plugin list",
+                        "copilot",
+                        "```",
+                        "",
+                        "Close that terminal or unset `COPILOT_HOME` to return to the default "
+                        "profile.",
+                        "",
+                    ]
+            else:
+                plugin_name = item.plugin_name or "<plugin-name>"
+                lines += [
+                    f"1. Extract `{item.path.name}` into a folder containing `plugin.json`.",
+                    "2. Install with `copilot plugin install <absolute path to plugin folder>`.",
+                    "3. To update the existing install, replace all contents of its source "
+                    f"folder and run `copilot plugin update {plugin_name}`.",
+                    "4. Run `copilot plugin list`, then exit Copilot CLI completely and run "
+                    "`copilot` again to start a fresh MCP server process.",
+                    "",
+                ]
+
+        win_item = next(
+            (item for item in copilot_cli if _platform(item) == "Windows"),
+            copilot_cli[0],
+        )
+        if win_item:
+            app_install_link = _copilot_app_install_link(win_item)
+            lines += [
+                "### GitHub Copilot App (UI)",
+                "",
+                f"1. Extract `{win_item.path.name}` to a folder.",
+                "2. In the GitHub Copilot App, open **Customize**.",
+                "3. Select the **Installed** tab.",
+                "4. Click the **+ Add Plugin** button and choose **Manage Marketplaces**.",
+                "5. Paste the extracted plugin directory path into the **Source** field and press "
+                "**Add**.",
+                "6. If there is no install option, run the following command in PowerShell "
+                "(Windows):",
+                "",
+                "```powershell",
+                f"Start-Process '{app_install_link}'",
+                "```",
+                "",
+                "7. In the app panel, press **Allow**, then press **Install**.",
+            ]
 
     codex = [item for item in artifacts if item.target == "Codex"]
     if codex:
@@ -278,20 +376,46 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
 
     claude_code = [item for item in artifacts if item.target in ("Claude Code", "Claude Code Cli")]
     if claude_code:
-        item = claude_code[0]
-        body = f"<ol><li>Extract <code>{escape(item.path.name)}</code> to a folder.</li>"
-        if item.plugin_name and item.marketplace_name:
-            body += (
-                "<li>In Claude Code, run:<pre><code>/plugin marketplace add "
-                "&lt;absolute path to extracted folder&gt;\n/plugin install "
-                f"{escape(item.plugin_name)}@{escape(item.marketplace_name)}"
-                "</code></pre></li>"
+        bodies = []
+        for item in claude_code:
+            platform = _platform(item)
+            heading = f"<h3>{escape(platform)}</h3>" if platform else ""
+            body = (
+                f"{heading}<ol><li>Extract <code>{escape(item.path.name)}</code> into a "
+                "versioned folder.</li>"
             )
-        else:
-            body += "<li>Add the extracted folder through Claude Code’s Plugins screen.</li>"
-        sections.append(f"<section><h2>Claude Code Cli</h2>{body}</ol></section>")
+            if item.plugin_name and item.marketplace_name:
+                body += (
+                    "<li>For a first install, register the folder as a local marketplace and "
+                    "install the plugin:<pre><code>claude plugin marketplace add "
+                    "&quot;&lt;absolute path to extracted folder&gt;&quot;\n"
+                    f"claude plugin install {escape(item.plugin_name)}@"
+                    f"{escape(item.marketplace_name)} --scope user</code></pre></li>"
+                    "<li>For an update, replace the files at the same marketplace path, "
+                    "then run:<pre><code>"
+                    f"claude plugin marketplace update {escape(item.marketplace_name)}\n"
+                    f"claude plugin update {escape(item.plugin_name)}@"
+                    f"{escape(item.marketplace_name)}\nclaude plugin list</code></pre></li>"
+                )
+            else:
+                body += (
+                    "<li>Install or update the plugin from the registered marketplace in "
+                    "Claude Code.</li>"
+                )
+            body += (
+                "<li>To test a new build from a different folder without replacing the "
+                "installed plugin, start a one-off session with "
+                "<code>claude --plugin-dir &quot;&lt;absolute path to extracted plugin "
+                "folder&gt;&quot;</code>.</li></ol>"
+            )
+            bodies.append(body)
+        sections.append(
+            "<section><h2>Claude Code Cli</h2>" + "".join(bodies) + "</section>"
+        )
 
-    copilot = [item for item in artifacts if item.target in ("GitHub Copilot", "VS Code GitHub Copilot")]
+    copilot = [
+        item for item in artifacts if item.target in ("GitHub Copilot", "VS Code GitHub Copilot")
+    ]
     if copilot:
         sections.append(
             "<section><h2>VS Code GitHub Copilot</h2><ol>"
@@ -304,40 +428,89 @@ def render_html(artifacts: list[PackageArtifact]) -> str:
 
     copilot_cli = [item for item in artifacts if item.target == "GitHub Copilot CLI"]
     if copilot_cli:
+        bodies = []
+        for item in copilot_cli:
+            platform = _platform(item)
+            plugin_name = escape(item.plugin_name or "<plugin-name>")
+            name = escape(item.path.name)
+            if platform == "Windows":
+                body = (
+                    "<h3>Windows (PowerShell)</h3><ol>"
+                    f"<li>Extract <code>{name}</code> to a versioned folder; use the folder "
+                    "that contains <code>plugin.json</code>.</li>"
+                    "<li>First install: <code>copilot plugin install &quot;&lt;absolute path "
+                    "to plugin folder&gt;&quot;</code>.</li>"
+                    f"<li>To update <code>{plugin_name}</code>, replace all files in the "
+                    "same source folder, then run "
+                    f"<code>copilot plugin update {plugin_name}</code>.</li>"
+                    "<li>Run <code>copilot plugin list</code> to verify the version, then exit "
+                    "Copilot CLI completely and run <code>copilot</code> again to start a fresh "
+                    "MCP server process.</li></ol>"
+                    "<p>To test a different folder without changing the default profile, "
+                    "use a separate config directory in the same PowerShell session:</p>"
+                    '<pre><code>$env:COPILOT_HOME = "$HOME\\.copilot-plugin-test"\n'
+                    'copilot plugin install "&lt;absolute path to test plugin folder&gt;"\n'
+                    "copilot plugin list\ncopilot</code></pre>"
+                    "<p>Close that terminal to return to the default profile.</p>"
+                )
+            elif platform == "Linux":
+                body = (
+                    "<h3>Linux (Bash)</h3><ol>"
+                    f"<li>Extract <code>{name}</code> to a versioned folder; use the folder "
+                    "that contains <code>plugin.json</code>.</li>"
+                    "<li>First install: <code>copilot plugin install &quot;&lt;absolute path "
+                    "to plugin folder&gt;&quot;</code>.</li>"
+                    f"<li>To update <code>{plugin_name}</code>, replace all files in the "
+                    "same source folder, then run "
+                    f"<code>copilot plugin update {plugin_name}</code>.</li>"
+                    "<li>Run <code>copilot plugin list</code> to verify the version, then exit "
+                    "Copilot CLI completely and run <code>copilot</code> again to start a fresh "
+                    "MCP server process.</li></ol>"
+                    "<p>To test a different folder without changing the default profile, "
+                    "use a separate config directory in the same Bash session:</p>"
+                    '<pre><code>export COPILOT_HOME="$HOME/.copilot-plugin-test"\n'
+                    'copilot plugin install "&lt;absolute path to test plugin folder&gt;"\n'
+                    "copilot plugin list\ncopilot</code></pre>"
+                    "<p>Close that terminal or unset <code>COPILOT_HOME</code> to return "
+                    "to the default profile.</p>"
+                )
+            else:
+                body = (
+                    f"<h3>Install from <code>{name}</code></h3><ol>"
+                    "<li>Extract it to a folder containing <code>plugin.json</code>.</li>"
+                    "<li>Install with <code>copilot plugin install &lt;absolute path to "
+                    "plugin folder&gt;</code>.</li>"
+                    f"<li>Update with <code>copilot plugin update {plugin_name}</code>, "
+                    "then verify using <code>copilot plugin list</code>.</li></ol>"
+                )
+            bodies.append(body)
+        sections.append(
+            "<section><h2>GitHub Copilot CLI</h2>" + "".join(bodies) + "</section>"
+        )
+
         win_item = next(
-            (item for item in copilot_cli if "-win" in item.path.name.lower()),
+            (item for item in copilot_cli if _platform(item) == "Windows"),
             copilot_cli[0],
         )
-        cli_zip = escape(copilot_cli[0].path.name)
-        win_zip = escape(win_item.path.name)
-        app_install_link = escape(_copilot_app_install_link(win_item))
-        sections.append(
-            "<section><h2>GitHub Copilot CLI</h2><ol>"
-            f"<li>Extract <code>{cli_zip}</code> to a folder.</li>"
-            "<li>To replace an older plugin, close active Copilot and VS Code sessions, then run "
-            "<code>copilot plugin uninstall &lt;old-plugin&gt;</code> in PowerShell.</li>"
-            "<li>Run <code>copilot plugin install &lt;absolute path to the "
-            "extracted folder&gt;</code>.</li>"
-            "<li>Run <code>copilot plugin list</code> to confirm installation, then start a "
-            "new Copilot CLI session.</li>"
-            "<li>If uninstall reports that the plugin directory is in use, close all Copilot and "
-            "VS Code sessions, then retry the uninstall command.</li></ol></section>"
-        )
-        sections.append(
-            "<section><h2>GitHub Copilot App (UI)</h2><ol>"
-            f"<li>Extract <code>{win_zip}</code> to a folder.</li>"
-            "<li>In the GitHub Copilot App, open <strong>Customize</strong>.</li>"
-            "<li>Select the <strong>Installed</strong> tab.</li>"
-            "<li>Click the <strong>+ Add Plugin</strong> button and choose <strong>Manage Marketplaces</strong>.</li>"
-            "<li>Paste the extracted plugin directory path into the <strong>Source</strong> field and press <strong>Add</strong>.</li>"
-            "<li>If there is no install option, run the following command in PowerShell "
-            "(Windows):<pre><code>"
-            f"Start-Process '{app_install_link}'"
-            "</code></pre></li>"
-            "<li>In the app panel, press <strong>Allow</strong>, then press "
-            "<strong>Install</strong>.</li>"
-            "</ol></section>"
-        )
+        if win_item:
+            win_zip = escape(win_item.path.name)
+            app_install_link = escape(_copilot_app_install_link(win_item))
+            sections.append(
+                "<section><h2>GitHub Copilot App (UI)</h2><ol>"
+                f"<li>Extract <code>{win_zip}</code> to a folder.</li>"
+                "<li>In the GitHub Copilot App, open <strong>Customize</strong>.</li>"
+                "<li>Select the <strong>Installed</strong> tab.</li>"
+                "<li>Click the <strong>+ Add Plugin</strong> button and choose "
+                "<strong>Manage Marketplaces</strong>.</li>"
+                "<li>Paste the extracted plugin directory path into the "
+                "<strong>Source</strong> field and press <strong>Add</strong>.</li>"
+                "<li>If there is no install option, run this in PowerShell "
+                "(Windows):<pre><code>"
+                f"Start-Process '{app_install_link}'"
+                "</code></pre></li>"
+                "<li>In the app panel, press <strong>Allow</strong>, then press "
+                "<strong>Install</strong>.</li></ol></section>"
+            )
 
     codex = [item for item in artifacts if item.target == "Codex"]
     if codex:

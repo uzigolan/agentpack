@@ -341,22 +341,41 @@ def test_claude_linux_readme_has_cli_install_and_reconnect_steps(package, tmp_pa
     ).read_text(encoding="utf-8")
     assert "claude plugin marketplace add" in readme
     assert "claude plugin install" in readme
-    assert "claude plugin uninstall <old-plugin>@<old-marketplace>" in readme
-    assert "claude plugin marketplace remove <old-marketplace>" in readme
+    assert "claude plugin marketplace update network-operations-marketplace" in readme
+    assert "claude plugin update network-operations@network-operations-marketplace" in readme
+    assert 'claude --plugin-dir "<path to the extracted plugin folder>"' in readme
     assert "claude mcp list" in readme
-    assert "Start a new Claude Code session" in readme
+    assert "Start a new session after updating" in readme
+    assert "chmod +x <marketplace-directory>" in readme
 
 
 def test_cli_platform_readmes_explain_how_to_replace_old_plugins(package, tmp_path: Path):
-    targets = ["claude-code-win", "copilot-cli-win", "copilot-cli-linux", "codex-win", "codex-cli-linux"]
+    targets = [
+        "claude-code-win",
+        "copilot-cli-win",
+        "copilot-cli-linux",
+        "codex-win",
+        "codex-cli-linux",
+    ]
     build(package, targets=targets, output_dir=tmp_path / "dist")
     readmes = {
         target: (tmp_path / "dist" / "build" / target / "README.md").read_text(encoding="utf-8")
         for target in targets
     }
-    assert "claude plugin uninstall <old-plugin>@<old-marketplace>" in readmes["claude-code-win"]
-    assert "copilot plugin uninstall <old-plugin>" in readmes["copilot-cli-win"]
-    assert "copilot plugin uninstall <old-plugin>" in readmes["copilot-cli-linux"]
+    assert (
+        "claude plugin marketplace update network-operations-marketplace"
+        in readmes["claude-code-win"]
+    )
+    assert (
+        "claude plugin update network-operations@network-operations-marketplace"
+        in readmes["claude-code-win"]
+    )
+    assert "$env:COPILOT_HOME" in readmes["copilot-cli-win"]
+    assert "export COPILOT_HOME" in readmes["copilot-cli-linux"]
+    assert "copilot plugin update network-operations" in readmes["copilot-cli-win"]
+    assert "copilot plugin update network-operations" in readmes["copilot-cli-linux"]
+    assert "PowerShell" in readmes["copilot-cli-win"]
+    assert "Bash" in readmes["copilot-cli-linux"]
     assert "codex plugin remove <old-plugin>@<old-marketplace>" in readmes["codex-win"]
     assert "codex plugin remove <old-plugin>@<old-marketplace>" in readmes["codex-cli-linux"]
 

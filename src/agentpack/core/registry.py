@@ -58,40 +58,86 @@ class _PlatformAdapter(TargetAdapter):
         if self._base.name == "claude-code":
             plugin = package.metadata.name
             platform = "Linux" if self._runtime == "linux-x86_64" else "Windows"
+            shell = "bash" if platform == "Linux" else "powershell"
+            marketplace_path = '"<absolute path to extracted package folder>"'
             steps = [
-                f"Use Claude Code's {platform} command line to replace an older plugin, then install and verify this one:",
+                f"Use Claude Code's {platform} command line.",
                 "",
-                "```bash",
-                "claude plugin list",
-                "claude plugin uninstall <old-plugin>@<old-marketplace>",
-                "claude plugin marketplace remove <old-marketplace>",
-                "claude plugin marketplace add <absolute path to marketplace-directory>",
-                f"claude plugin install {plugin}@{plugin}-marketplace",
-                "claude plugin list",
-                "claude mcp list",
-                "claude",
+                "For a first install, register the extracted folder as a local marketplace:",
+                "",
+                f"```{shell}",
+                f"claude plugin marketplace add {marketplace_path}",
+                f"claude plugin install {plugin}@{plugin}-marketplace --scope user",
                 "```",
                 "",
-                "Run the uninstall and marketplace removal commands only when replacing an older plugin. "
-                "Start a new Claude Code session after installation so it loads the plugin and reconnects to its MCP server.",
+                "To update, replace the files at that same marketplace path, then run:",
+                "",
+                f"```{shell}",
+                f"claude plugin marketplace update {plugin}-marketplace",
+                f"claude plugin update {plugin}@{plugin}-marketplace",
+                "claude plugin list",
+                "claude mcp list",
+                "```",
+                "",
+                "To test a new build from a different folder without replacing the installed "
+                "plugin, start a one-off session with "
+                "`claude --plugin-dir \"<path to the extracted plugin folder>\"`. "
+                "Start a new session after updating so Claude Code reloads the plugin and "
+                "reconnects "
+                "to its MCP server.",
             ]
             if self._runtime == "linux-x86_64":
-                steps[3:3] = [
-                    f"chmod +x <marketplace-directory>/{plugin}/runtime/linux-x86_64/rad-mcp-runtime",
+                steps[5:5] = [
+                    f"chmod +x <marketplace-directory>/{plugin}/"
+                    "runtime/linux-x86_64/rad-mcp-runtime",
                 ]
             return steps
         if self._base.name == "copilot-cli":
+            platform = (
+                "Windows (PowerShell)"
+                if self._runtime == "windows-amd64"
+                else "Linux (Bash)"
+            )
+            shell = "powershell" if self._runtime == "windows-amd64" else "bash"
+            test_profile = (
+                [
+                    'Set `$env:COPILOT_HOME = "$HOME\\.copilot-rad-test"` in PowerShell, '
+                    "then install from and run Copilot CLI against the test folder in that same "
+                    "terminal."
+                ]
+                if self._runtime == "windows-amd64"
+                else [
+                    'Run `export COPILOT_HOME="$HOME/.copilot-rad-test"` in Bash, '
+                    "then install from and run Copilot CLI against the test folder in that same "
+                    "terminal."
+                ]
+            )
             return [
-                "Use the GitHub Copilot CLI to replace an older plugin, then install and verify this one:",
+                f"Use GitHub Copilot CLI from {platform}.",
                 "",
-                "```bash",
-                "copilot plugin list",
-                "copilot plugin uninstall <old-plugin>",
+                "For a first install:",
+                "",
+                f"```{shell}",
                 "copilot plugin install <absolute path to the extracted folder>",
+                "```",
+                "",
+                "To update, replace all contents of the same source folder with the new package, "
+                "then run:",
+                "",
+                f"```{shell}",
+                f"copilot plugin update {package.metadata.name}",
                 "copilot plugin list",
                 "```",
                 "",
-                "Run the uninstall command only when replacing an older plugin, then start a new Copilot CLI session.",
+                "Exit Copilot CLI completely and run `copilot` again to start a fresh MCP server "
+                "process; starting a new chat in the same process may keep the old server running.",
+                "",
+                "To test a new package from a different folder without changing the default "
+                "plugin profile:",
+                *test_profile,
+                "Install and verify it with `copilot plugin install <absolute path to the test "
+                "plugin folder>`, then run `copilot` and `copilot plugin list` in that terminal. "
+                "Close that terminal or unset `COPILOT_HOME` to return to the default profile.",
             ]
         if self._base.name == "codex":
             plugin = package.metadata.name.lower().replace("_", "-").replace(".", "-")

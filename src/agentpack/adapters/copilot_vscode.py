@@ -318,8 +318,16 @@ class CopilotCLIAdapter(CopilotPluginAdapter):
     def install_steps(self, package: AgentPackage) -> list[str]:
         return [
             "1. Extract the `copilot-cli-<transport>-<version>.zip` archive from "
-            "`dist/packages/` into a folder.",
-            "2. In PowerShell, run `copilot plugin install <absolute path to the extracted folder>`.",
-            "3. Run `copilot plugin list` to confirm the plugin is installed, then start a new "
-            "Copilot CLI session.",
+            "`dist/packages/` into a versioned folder containing `plugin.json`.",
+            "2. First install: run `copilot plugin install <absolute path to the plugin folder>` "
+            "in PowerShell or Bash.",
+            "3. To update the existing install, replace the contents of the same source folder "
+            "with the new package, then run `copilot plugin update "
+            f"{package.metadata.name}`.",
+            "4. Run `copilot plugin list` to confirm the version, then exit Copilot CLI "
+            "completely and run `copilot` again so it starts a fresh MCP server process.",
+            "",
+            "To test a different extracted folder without changing the default plugin profile, "
+            "set `COPILOT_HOME` to a separate directory before installing. Use a separate "
+            "terminal/profile and unset `COPILOT_HOME` to return to the default profile.",
         ]

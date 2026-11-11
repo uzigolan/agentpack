@@ -18,7 +18,12 @@ def test_target_install_writes_guides_from_package_files_only(tmp_path: Path):
     packages = tmp_path / "packages"
     packages.mkdir()
     _zip(
-        packages / "claude-code-1.2.3.zip",
+        packages / "claude-code-win-demo-1.2.3.zip",
+        ".claude-plugin/marketplace.json",
+        {"name": "demo-marketplace", "plugins": [{"name": "demo-plugin"}]},
+    )
+    _zip(
+        packages / "claude-code-cli-linux-demo-1.2.3.zip",
         ".claude-plugin/marketplace.json",
         {"name": "demo-marketplace", "plugins": [{"name": "demo-plugin"}]},
     )
@@ -28,7 +33,8 @@ def test_target_install_writes_guides_from_package_files_only(tmp_path: Path):
         {"name": "demo-marketplace", "plugins": [{"name": "demo-plugin"}]},
     )
     _zip(packages / "copilot-1.2.3.zip", "plugin.json", {"name": "demo-plugin"})
-    _zip(packages / "copilot-cli-stdio-1.2.3.zip", "plugin.json", {"name": "demo-cli"})
+    _zip(packages / "copilot-cli-win-demo-1.2.3.zip", "plugin.json", {"name": "demo-cli"})
+    _zip(packages / "copilot-cli-linux-demo-1.2.3.zip", "plugin.json", {"name": "demo-cli"})
     _zip(packages / "universal-1.2.3.zip", "plugin.json", {})
     _zip(
         packages / "claude-desktop-demo-http-1.2.3.mcpb",
@@ -42,14 +48,19 @@ def test_target_install_writes_guides_from_package_files_only(tmp_path: Path):
     markdown = (packages / "INSTALL.md").read_text(encoding="utf-8")
     html = (packages / "INSTALL.html").read_text(encoding="utf-8")
     assert "demo-plugin@demo-marketplace" in markdown
+    assert "### Windows" in markdown
+    assert "### Linux" in markdown
     assert "MCP extension (HTTP)" in markdown
     assert "Settings → Customize → Connectors" in markdown
     assert "Needs Approval" in markdown
     assert "Always allow" in markdown
     assert "GitHub Copilot CLI" in markdown
     assert "copilot plugin install" in markdown
-    assert "copilot plugin uninstall <old-plugin>" in markdown
-    assert "plugin directory is in use" in markdown
+    assert "copilot plugin update demo-cli" in markdown
+    assert "$env:COPILOT_HOME" in markdown
+    assert 'export COPILOT_HOME="$HOME/.copilot-plugin-test"' in markdown
+    assert "claude --plugin-dir" in markdown
+    assert "exit Copilot CLI completely" in markdown
     assert "## Claude Code Cli" in markdown
     assert "## VS Code GitHub Copilot" in markdown
     assert "## GitHub Copilot CLI" in markdown
@@ -57,13 +68,18 @@ def test_target_install_writes_guides_from_package_files_only(tmp_path: Path):
     assert "agentpack" not in markdown.lower()
     assert html.count("<h2>Available packages</h2>") == 1
     assert "demo-plugin@demo-marketplace" in html
+    assert "<h3>Windows</h3>" in html
+    assert "<h3>Linux</h3>" in html
     assert "Settings → Customize → Connectors" in html
     assert "<h2>Claude Code Cli</h2>" in html
     assert "<h2>VS Code GitHub Copilot</h2>" in html
     assert "<h2>GitHub Copilot CLI</h2>" in html
     assert "<h2>GitHub Copilot App (UI)</h2>" in html
-    assert "copilot plugin uninstall &lt;old-plugin&gt;" in html
-    assert "plugin directory is in use" in html
+    assert "copilot plugin update demo-cli" in html
+    assert "$env:COPILOT_HOME" in html
+    assert 'export COPILOT_HOME="$HOME/.copilot-plugin-test"' in html
+    assert "claude --plugin-dir" in html
+    assert "exit Copilot CLI completely" in html
     assert "GitHub Copilot App (UI)" in html
     assert "Customize" in html
     assert "Installed" in html
