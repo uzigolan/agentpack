@@ -42,8 +42,17 @@ not provide an MCPB or a local runtime.
 ## 3. Package
 
 ```powershell
-agentpack package -n my-agent --knowledge served
+agentpack package -n my-agent --platform windows --knowledge served
 ```
+
+For Linux client packages, select the Linux platform explicitly:
+
+```bash
+agentpack package -n my-agent --platform linux --knowledge served
+```
+
+`--platform` chooses the platform-specific targets and runtime included in the
+archives. The default is `windows`.
 
 Use `--knowledge bundled` when skill `references/` files must travel inside
 the client packages. `served` ships the `SKILL.md` files and expects the MCP

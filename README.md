@@ -67,6 +67,9 @@ agentpack validate -n rad-agent-toolkit-http
 
 # 5. pack
 agentpack package -n rad-agent-toolkit-http
+
+# For Linux client packages instead:
+agentpack package -n rad-agent-toolkit-http --platform linux
 ```
 
 Produces in `artifacts\rad-agent-toolkit-http\dist\packages\`:
@@ -151,6 +154,12 @@ agentpack validate -n rad-agent-toolkit-stdio
 
 # 4. pack
 agentpack package -n rad-agent-toolkit-stdio
+```
+
+Use `--platform linux` when packaging for Linux clients:
+
+```powershell
+agentpack package -n rad-agent-toolkit-stdio --platform linux
 ```
 
 `pack import` only accepts a directory whose `pack.json` declares
@@ -399,7 +408,8 @@ agentpack skill import PATH -n NAME
 agentpack mcp import FILE.json -n NAME
 agentpack pack import PORTABLE_PACK_DIRECTORY -n NAME
 agentpack validate -n NAME
-agentpack package -n NAME
+agentpack package -n NAME --platform windows
+agentpack package -n NAME --platform linux
 agentpack package -n NAME -t copilot       # build just one target
 agentpack package -n NAME -t codex
 agentpack clean -n NAME                    # removes only artifacts/NAME/dist
