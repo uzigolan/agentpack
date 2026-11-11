@@ -54,7 +54,7 @@ runtime** (three commands, everything in one import).
 
 ```powershell
 # 1. init
-agentpack init -n rad-agent-toolkit-http --version 0.25.1
+agentpack init -n rad-agent-toolkit-http --display-name "RAD Agent Toolkit HTTP" --version 0.25.1 --author-name "Keanu Reeves"
 
 # 2. skills import
 agentpack skill import "C:\source-repo\dist\pack_http\skills" -n rad-agent-toolkit-http
@@ -141,7 +141,7 @@ the runtime/config payload in a single step:
 
 ```powershell
 # 1. init
-agentpack init -n rad-agent-toolkit-stdio --version 0.25.1
+agentpack init -n rad-agent-toolkit-stdio --display-name "RAD Agent Toolkit stdio" --version 0.25.1 --author-name "Keanu Reeves"
 
 # 2. import the whole portable pack (skills + MCP + runtime + config)
 agentpack pack import "C:\source-repo\dist\pack_stdio" -n rad-agent-toolkit-stdio
@@ -392,7 +392,7 @@ Open `artifacts/<name>/dist/packages/INSTALL.md` after every package command
 ### Useful commands
 
 ```powershell
-agentpack init -n NAME --version X.Y.Z
+agentpack init -n NAME --display-name "DISPLAY NAME" --version X.Y.Z --author-name "AUTHOR NAME"
 agentpack version set X.Y.Z -n NAME
 agentpack agent import DIRECTORY -n NAME
 agentpack skill import PATH -n NAME

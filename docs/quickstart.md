@@ -4,11 +4,16 @@ Use one package name with every command. AgentPack stores its workspace in
 `artifacts/<name>/`; it never imports source material or writes generated
 packages anywhere else.
 
-## 1. Create a package and set its version
+## 1. Create a package
 
 ```powershell
-agentpack init -n my-agent --version 1.0.0
+agentpack init -n my-agent --display-name "My Agent" --version 1.0.0 --author-name "Keanu Reeves"
 ```
+
+`--display-name` sets the package's friendly title, `--version` its initial
+version, and `--author-name` the author recorded in its manifest. For a
+Claude Desktop MCP extension label, set the MCP server's `--display-name`
+with `agentpack mcp add` or `agentpack mcp update`.
 
 Change the package version later:
 
