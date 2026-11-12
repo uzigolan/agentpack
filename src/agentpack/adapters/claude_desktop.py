@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -371,7 +372,7 @@ class ClaudeDesktopAdapter(TargetAdapter):
             write_json(
                 plugin_dir / ".claude-plugin" / "plugin.json",
                 {
-                    "name": meta.name,
+                    "name": re.sub(r"[^a-z0-9-]+", "-", meta.name.lower()).strip("-") or "plugin",
                     "description": meta.description,
                     "version": meta.version,
                     "author": {"name": meta.author_name},

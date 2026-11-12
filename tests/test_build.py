@@ -271,6 +271,19 @@ def test_claude_desktop_ships_skills_as_one_plugin(package, tmp_path: Path):
     assert not (tmp_path / "dist" / "build" / "claude-desktop" / "skills").exists()
 
 
+def test_claude_desktop_plugin_normalizes_dotted_package_name(package, tmp_path: Path):
+    package.metadata.name = "remote-http-0341-hub.ai.rnd.rad.com"
+    package.mcp_servers = []
+    summary = build(
+        package, targets=["claude-desktop"], output_dir=tmp_path / "dist", archive=True
+    )
+    assert summary.ok
+    archive = next((tmp_path / "dist" / "packages").glob("*.plugin"))
+    manifest = json.loads(_skill_zip_text(archive, ".claude-plugin/plugin.json"))
+    assert manifest["name"] == "remote-http-0341-hub-ai-rnd-rad-com"
+    assert "skills/network-analysis/SKILL.md" in _skill_zip_names(archive)
+
+
 def test_claude_desktop_bundles_windows_http_bridge(package, tmp_path: Path):
     _build(package, tmp_path)
     manifest = json.loads(
